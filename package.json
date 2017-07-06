@@ -1,0 +1,23 @@
+{
+  "name": "getmovie",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.1",
+    "http": "0.0.0",
+    "iconv-lite": "^0.4.18",
+    "mysql": "^2.13.0",
+    "request": "^2.81.0",
+    "socks5-http-client": "^1.0.2",
+    "socks5-https-client": "^1.2.1",
+    "tor-control": "0.0.1",
+    "tor-request": "^1.0.6",
+    "url": "^0.11.0"
+  }
+}

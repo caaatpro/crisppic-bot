@@ -1,0 +1,1 @@
+tor sockslistenaddress localhost socksport 9050 controlport 9051
