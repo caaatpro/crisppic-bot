@@ -13,6 +13,16 @@ const db = mysql.createConnection({
   database: 'movies'
 });
 
+db.config.queryFormat = function (query, values) {
+  if (!values) return query;
+  return query.replace(/\{(\w+)\}/g, function (txt, key) {
+    if (values.hasOwnProperty(key)) {
+      return this.escape(values[key]);
+    }
+    return txt;
+  }.bind(this));
+};
+
 var newCircuit = false;
 
 var control = new TorControl(),
@@ -57,14 +67,17 @@ http.createServer(function (request, response) {
   var queryData = url.parse(request.url, true).query;
   response.writeHead(200, {'Content-Type': 'text/plain'});
 
-  if (queryData.url.length) {
+  if (queryData.url) {
     console.log(decodeURI(queryData.url));
 
     getMovieByUrl(decodeURI(queryData.url), (result) => {
       response.end(JSON.stringify(result));
     });
   } else if (queryData.search) {
+    console.log(queryData.search);
+    console.log(decodeURI(queryData.search));
     getMovie(decodeURI(queryData.search), (result) => {
+      console.log(result);
       response.end(JSON.stringify(result));
     });
   }
@@ -166,7 +179,12 @@ var getMovieByUrl = (url, callback) => {
       }
       movie.alternativeTitle = $('.film-meta__title').text().trim(); // Оригинальное название
       movie.description = $('.film-description .kinoisland__content').text().trim(); // Описание
-      movie.genres = $('.movie-tags').attr('content').trim();
+
+      if (movie.kinopoisk_id == '34074') {
+        movie.genres = 'семейный';
+      } else {
+        movie.genres = $('.movie-tags').attr('content').trim();
+      }
       movie.kinopoisk_rating = $('.rating-button__rating').first().text().trim();
 
       var table = $('.film-info tr');
@@ -225,11 +243,26 @@ request(options, function (err, res, body) {
     }
 });*/
 
+var queryLog = (query, result, 	err) => {
+  if (err == null) {
+    error = 0;
+  } else {
+    error = 1;
+  }
+
+  db.query('INSERT `querylogs` (text, result, error) VALUES ({text}, {result}, {error})', { text: query, result: result, error: error }, function(err, result) {
+    if (err) throw err;
+
+    console.log(result);
+  });
+}
+
 
 function getMovie(search, callback) {
-  var query = 'SELECT * FROM movies WHERE title = "'+search+'" OR alternativeTitle = "'+search+'"';
-  db.query(query, function(err, result) {
+  db.query('SELECT * FROM `movies` WHERE MATCH (title, alternativeTitle) AGAINST ({search}) LIMIT 1', { search: search }, function(err, result) {
     if (err) throw err;
+
+    queryLog(this.sql, result.length, err);
 
     callback(result);
   });
@@ -240,12 +273,12 @@ function saveMovie(data) {
   data.genres = data.genres;
   data.duration = data.duration;
 
-  var query = 'SELECT * FROM movies WHERE type = "'+data.type+'" AND alternativeTitle = "'+data.alternativeTitle+'" AND year = "'+data.year+'"';
+  var query = 'SELECT * FROM `movies` WHERE type = "'+data.type+'" AND alternativeTitle = "'+data.alternativeTitle+'" AND year = "'+data.year+'"';
   db.query(query, function(err, result) {
     if (err) throw err;
 
     if (result.length == 0) {
-      query = 'INSERT movies (type, title, alternativeTitle, countries, genres, duration, year, age, description, premiere, kinopoisk_rating, IMDb_rating, kinopoisk_id) VALUES ("'+data.type+'", "'+data.title+'", "'+data.alternativeTitle+'", "'+data.countries+'", "'+data.genres+'", "'+data.duration+'", "'+data.year+'", "'+data.age+'", "'+data.description+'", "'+data.premiere+'", "'+data.kinopoisk_rating+'", "'+data.IMDb_rating+'", "'+data.kinopoisk_id+'")';
+      query = 'INSERT `movies` (type, title, alternativeTitle, countries, genres, duration, year, age, description, premiere, kinopoisk_rating, IMDb_rating, kinopoisk_id) VALUES ("'+data.type+'", "'+data.title+'", "'+data.alternativeTitle+'", "'+data.countries+'", "'+data.genres+'", "'+data.duration+'", "'+data.year+'", "'+data.age+'", "'+data.description+'", "'+data.premiere+'", "'+data.kinopoisk_rating+'", "'+data.IMDb_rating+'", "'+data.kinopoisk_id+'")';
 
       db.query(query, function(err, result) {
         if (err) throw err;
@@ -259,7 +292,7 @@ function saveMovie(data) {
 }
 
 function getGenres(callback) {
-  var query = 'SELECT * FROM genres';
+  var query = 'SELECT * FROM `genres`';
   db.query(query, function(err, result) {
     if (err) throw err;
 
@@ -282,7 +315,7 @@ function getGenre(name) {
 }
 
 function getCountries(callback) {
-  var query = 'SELECT * FROM countries';
+  var query = 'SELECT * FROM `countries`';
   db.query(query, function(err, result) {
     if (err) throw err;
 
