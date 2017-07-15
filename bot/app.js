@@ -1,6 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api'),
   request = require('request'),
-  database = require('../utils/db');
+  database = require('../utils/db'),
+  parseDate = require('../utils/parseDate');
 
 const token = '427137590:AAG3cYR6WSzov9FD7MIGXdi7pTO31kkoLck';
 var bot;
@@ -28,6 +29,8 @@ const replicas = {
 };
 
 var lastmessage = {};
+
+var waitInputDate = 0;
 
 const searchMovie = (name, callback) => {
   var options = {
@@ -149,22 +152,6 @@ const userSave = (message) => {
   });
 };
 
-const userSetViews = (movieId, telegramId, date) => {
-
-};
-
-const userGetViews = (movieId, telegramId) => {
-
-};
-
-const userSetWatch = (movieId, userId) => {
-
-};
-
-const userGetWatch = (movieId, userId) => {
-
-};
-
 const messageHandler = (message) => {
   lastmessage[message.chat.id] = message.text;
   userSave(message);
@@ -216,6 +203,8 @@ const formatMovies = (movies) => {
   return text;
 }
 
+
+
 const init = () => {
   bot = new TelegramBot(token, {
     polling: true
@@ -223,26 +212,50 @@ const init = () => {
 
   bot.on('callback_query', function(message) {
     switch (message.data) {
+      case 'callback_add_view_cancel':
+        // удаляем сообщение если можно
+
+
+        break;
       case /^callback_views\d+$/.test(message.data) ? message.data: null:
         var movieId = message.data.replace('callback_views', '');
         console.log(movieId);
-        setWatchMovie(movieId, message.from.id, (watch) => {
-          bot.editMessageText(message.message.text, {
-            message_id: message.message.message_id,
-            chat_id: message.message.chat.id,
-            reply_markup: JSON.stringify({
-              inline_keyboard: [
-                [{
-                  text: 'Посмотрел',
-                  callback_data: 'callback_views'+movieId
-                }, {
-                  text: (watch ? emoji.check : '') + 'Буду смотреть',
-                  callback_data: 'callback_watch'+movieId
-                }]
-              ]
-            })
-          });
+
+        waitInputDate = message.id;
+
+        return bot.sendMessage(message.message.chat.id, 'Введите дату просмотра\nНапример: 07.02.2017, вчера или сегодня', {
+          parse_mode: 'Markdown',
+          reply_markup: JSON.stringify({
+            keyboard: [
+              ['Отмена']
+            ]
+          })
         });
+
+
+        break;
+      case /^callback_add_view\d+$/.test(message.data) ? message.data: null:
+        var movieId = message.data.replace('callback_add_view', '');
+        console.log(movieId);
+
+        waitInputDate = message.id;
+
+        // записываем id сообщения
+        // просим ввести дату
+        // выводим кнопку отмена
+        //
+        return bot.sendMessage(message.message.chat.id, 'Введите дату просмотра\nНапример: 07.02.2017, вчера или сегодня', {
+          parse_mode: 'Markdown',
+          reply_markup: JSON.stringify({
+            keyboard: [
+              [{
+                text: 'Отмена',
+                callback_data: 'callback_add_view_cancel'
+              }]
+            ]
+          })
+        });
+
 
         break;
 
@@ -257,7 +270,7 @@ const init = () => {
               inline_keyboard: [
                 [{
                   text: 'Посмотрел',
-                  callback_data: 'callback_views'+movieId
+                  callback_data: 'callback_add_view'+movieId
                 }, {
                   text: (watch ? emoji.check : '') + 'Буду смотреть',
                   callback_data: 'callback_watch'+movieId
@@ -276,9 +289,54 @@ const init = () => {
   });
 
   bot.on('message', (message) => {
+    var mt = message.text.toLowerCase()
     var chatId = message.chat.id;
 
-    console.log(message.text);
+    console.log(waitInputDate);
+
+    if (mt == 'отмена') {
+      return bot.sendMessage(message.chat.id, 'Ок', {
+        parse_mode: 'Markdown',
+        reply_markup: JSON.stringify({
+          hide_keyboard: true
+        })
+      });
+    }
+
+    if (waitInputDate) {
+      let date = parseDate(message.text);
+      console.log(date);
+
+      // не меньше дата релиза
+      // не больше текущая дата
+
+      if (date.date) {
+        var text = date.date.getDate() + '.' + date.date.getMonth() + '.' + date.date.getFullYear(); // 2 февраля 2017
+
+        var keyboard = [
+          [{
+            text: 'Ок'
+          }, {
+            text: 'Отмена'
+          }]
+        ];
+      } else {
+        var text = 'Не верный формат даты';
+        var keyboard = [
+          [{
+            text: 'Ок'
+          }, {
+            text: 'Отмена'
+          }]
+        ];
+      }
+      return bot.sendMessage(message.chat.id, text, {
+        parse_mode: 'Markdown',
+        reply_markup: JSON.stringify({
+          keyboard: keyboard
+        })
+      });
+    }
 
     switch (message.text) {
       case '/start':
@@ -308,7 +366,7 @@ const init = () => {
                 inline_keyboard: [
                   [{
                     text: 'Посмотрел',
-                    callback_data: 'callback_views'+result.movie[0].id
+                    callback_data: 'callback_add_view'+result.movie[0].id
                   }, {
                     text: (watch ? emoji.check : '') + 'Буду смотреть',
                     callback_data: 'callback_watch'+result.movie[0].id

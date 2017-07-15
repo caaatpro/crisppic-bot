@@ -1,7 +1,7 @@
 const request = require('request'),
   cheerio = require('cheerio'),
-  iconv = require('iconv-lite');
-http = require('http'),
+  iconv = require('iconv-lite'),
+  http = require('http'),
   url = require('url'),
   TorControl = require('tor-control'),
   Agent = require('socks5-https-client/lib/Agent'),
@@ -10,7 +10,6 @@ http = require('http'),
 const config = {
   port: 8080
 };
-
 
 
 const db = database.init(() => {
