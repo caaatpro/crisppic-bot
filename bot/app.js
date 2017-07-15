@@ -5,6 +5,8 @@ const TelegramBot = require('node-telegram-bot-api'),
 const token = '427137590:AAG3cYR6WSzov9FD7MIGXdi7pTO31kkoLck';
 var bot;
 
+const movieApi = 'http://127.0.0.1:8080/';
+
 var lastMessage;
 
 const emoji = {
@@ -17,15 +19,19 @@ const emoji = {
   'ticket': '\u{1F3AB}',
   'actors': '\u{1F3AD}',
   'ghost': '\u{1F47B}',
-  'pushpin': '\u{1F4CC}'
+  'pushpin': '\u{1F4CC}',
+  'check': '\u{2705}'
 };
-
+const replicas = {
+  'movieNotFound': emoji.ghost + ' Фильм не найден',
+  'error': 'Не в силах('
+};
 
 var lastmessage = {};
 
 const searchMovie = (name, callback) => {
   var options = {
-    url: 'http://127.0.0.1:8080/?search=' + encodeURI(name)
+    url: movieApi + '?search=' + encodeURI(name)
   }
   request.get(options, (err, res, body) => {
     if (err) console.log(err);
@@ -45,15 +51,61 @@ const searchMovie = (name, callback) => {
   });
 };
 
-const getMovie = (id, callback) => {
+const getWatchMovie = (id, telegramId, callback) => {
   var options = {
-    url: 'http://127.0.0.1:8080/?movieId=' + id
+    url: movieApi + '?watchMovieId=' + id + '&telegramId='+telegramId
+  }
+  console.log(id, telegramId);
+  request.get(options, (err, res, body) => {
+    if (err) console.log(err);
+    else if (res.statusCode != 200) {
+      console.log('Error status ' + res.statusCode);
+      bot.sendMessage(chatId, replicas.error);
+      return;
+    } else {
+      if (JSON.parse(body) == 'bad') {
+        return callback('bad');
+      }
+
+      var movie = JSON.parse(body);
+
+      return callback(movie);
+    }
+  });
+};
+
+const setWatchMovie = (id, telegramId, callback) => {
+  var options = {
+    url: movieApi + '?setWatchMovieId=' + id + '&telegramId='+telegramId
+  }
+  console.log(id, telegramId);
+  request.get(options, (err, res, body) => {
+    if (err) console.log(err);
+    else if (res.statusCode != 200) {
+      console.log('Error status ' + res.statusCode);
+      bot.sendMessage(chatId, replicas.error);
+      return;
+    } else {
+      if (JSON.parse(body) == 'bad') {
+        return callback('bad');
+      }
+
+      var movie = JSON.parse(body);
+
+      return callback(movie);
+    }
+  });
+};
+
+const getMovie = (id, telegramId, callback) => {
+  var options = {
+    url: movieApi + '?movieId=' + id + '&telegramId='+telegramId
   }
   request.get(options, (err, res, body) => {
     if (err) console.log(err);
     else if (res.statusCode != 200) {
       console.log('Error status ' + res.statusCode);
-      bot.sendMessage(chatId, 'Error :(');
+      bot.sendMessage(chatId, replicas.error);
       return;
     } else {
       if (JSON.parse(body) == 'bad') {
@@ -94,9 +146,23 @@ const userSave = (message) => {
           console.log(result);
         });
     }
-
-
   });
+};
+
+const userSetViews = (movieId, telegramId, date) => {
+
+};
+
+const userGetViews = (movieId, telegramId) => {
+
+};
+
+const userSetWatch = (movieId, userId) => {
+
+};
+
+const userGetWatch = (movieId, userId) => {
+
 };
 
 const messageHandler = (message) => {
@@ -104,11 +170,15 @@ const messageHandler = (message) => {
   userSave(message);
 
   // message log
-  var query = 'INSERT messages (chatId, text) VALUES ("' + message.chat.id + '", "' + message.text + '")';
-  db.query(query, (err, result) => {
-    if (err) throw err;
-
+  db.queryAsync('INSERT messages (chatId, text) VALUES ({chatId}, {text})', {
+    chatId: message.chat.id,
+    text: message.text
+  })
+  .then(function(result) {
     console.log('1 record inserted');
+  })
+  .catch(function(error) {
+    console.log(error);
   });
 };
 
@@ -131,8 +201,8 @@ const formatOneMovie = (movie) => {
     emoji.globe + ' *Страны:* ' + movie.countries + '\n' +
     emoji.clock + ' *Длительность:* ' + movie.duration + '\n' +
     emoji.pushpin + ' *Жанры:* ' + movie.genres + '\n' +
-    emoji.hat + ' *Режисёры:* \n' +
-    emoji.actors + ' *Актёры:* \n' +
+    // emoji.hat + ' *Режисёры:* \n' +
+    // emoji.actors + ' *Актёры:* \n' +
     emoji.star + ' *Кинопоиск:* ' + movie.kinopoisk_rating + ' *IMDb:* ' + movie.IMDb_rating + ' \n' +
     emoji.hat + ' ' + movie.description;
 }
@@ -145,34 +215,64 @@ const formatMovies = (movies) => {
   }
   return text;
 }
-var iii = 0;
+
 const init = () => {
   bot = new TelegramBot(token, {
     polling: true
   });
 
-  bot.on('callback_query', function(msg) {
-    console.log(msg.message.message_id);
-    console.log(msg.message.chat.id);
-    iii++;
+  bot.on('callback_query', function(message) {
+    switch (message.data) {
+      case /^callback_views\d+$/.test(message.data) ? message.data: null:
+        var movieId = message.data.replace('callback_views', '');
+        console.log(movieId);
+        setWatchMovie(movieId, message.from.id, (watch) => {
+          bot.editMessageText(message.message.text, {
+            message_id: message.message.message_id,
+            chat_id: message.message.chat.id,
+            reply_markup: JSON.stringify({
+              inline_keyboard: [
+                [{
+                  text: 'Посмотрел',
+                  callback_data: 'callback_views'+movieId
+                }, {
+                  text: (watch ? emoji.check : '') + 'Буду смотреть',
+                  callback_data: 'callback_watch'+movieId
+                }]
+              ]
+            })
+          });
+        });
 
-    bot.editMessageText(msg.message.text, {
-      message_id: msg.message.message_id,
-      chat_id: msg.message.chat.id,
-      reply_markup: JSON.stringify({
-        inline_keyboard: [
-          [{
-            text: 'Посмотрел (' + iii + ')',
-            callback_data: '1'
-          }, {
-            text: emoji.calendar + 'Буду смотреть',
-            callback_data: 'data 2'
-          }]
-        ]
-      })
-    });
+        break;
 
-    bot.answerCallbackQuery(msg.id, 'Ok, here ya go!');
+      case /^callback_watch\d+$/.test(message.data) ? message.data: null:
+        var movieId = message.data.replace('callback_watch', '');
+        console.log(movieId);
+        setWatchMovie(movieId, message.from.id, (watch) => {
+          bot.editMessageText(message.message.text, {
+            message_id: message.message.message_id,
+            chat_id: message.message.chat.id,
+            reply_markup: JSON.stringify({
+              inline_keyboard: [
+                [{
+                  text: 'Посмотрел',
+                  callback_data: 'callback_views'+movieId
+                }, {
+                  text: (watch ? emoji.check : '') + 'Буду смотреть',
+                  callback_data: 'callback_watch'+movieId
+                }]
+              ]
+            })
+          });
+        });
+
+        break;
+      default:
+
+    }
+
+    bot.answerCallbackQuery(message.id, 'Ok, here ya go!');
   });
 
   bot.on('message', (message) => {
@@ -188,35 +288,36 @@ const init = () => {
           caption: 'I\'m a bot!'
         });
         break;
-      case /^\/\d+$/.test(message.text) ? message.text:
-        null:
+      case /^\/\d+$/.test(message.text) ? message.text: null:
           messageHandler(message);
 
-
-        getMovie(message.text.substr(1), (movie) => {
-          if (movie == 'bad') {
-            return bot.sendMessage(chatId, 'Не в силах(');
+        getMovie(message.text.substr(1), message.from.id, (result) => {
+          if (result == 'bad') {
+            return bot.sendMessage(chatId, replicas.error);
           }
 
-          console.log(movie.length);
+          console.log(result.movie.length);
 
-          if (movie.length) {
-            return bot.sendMessage(chatId, formatOneMovie(movie[0]), {
+          if (result.movie.length) {
+            var watch = false;
+            if (result.watch.length) watch = true;
+
+            return bot.sendMessage(chatId, formatOneMovie(result.movie[0]), {
               parse_mode: 'Markdown',
               reply_markup: JSON.stringify({
                 inline_keyboard: [
                   [{
                     text: 'Посмотрел',
-                    callback_data: '1'
+                    callback_data: 'callback_views'+result.movie[0].id
                   }, {
-                    text: 'Буду смотреть',
-                    callback_data: 'data 2'
+                    text: (watch ? emoji.check : '') + 'Буду смотреть',
+                    callback_data: 'callback_watch'+result.movie[0].id
                   }]
                 ]
               })
             });
           } else {
-            return bot.sendMessage(chatId, emoji.ghost + ' Фильм не найден');
+            return bot.sendMessage(chatId, replicas.movieNotFound);
           }
         });
         break;
@@ -224,8 +325,9 @@ const init = () => {
         messageHandler(message);
 
         searchMovie(message.text, (movie) => {
+          console.log(movie);
           if (movie == 'bad') {
-            return bot.sendMessage(chatId, 'Не в силах(');
+            return bot.sendMessage(chatId, replicas.error);
           }
 
           console.log(movie.length);
@@ -249,15 +351,8 @@ const init = () => {
                 ]
               })
             });
-            /*.then(
-              result => {
-                console.log(result);
-              }
-            );*/
-
-            // lastMessage;
           } else {
-            return bot.sendMessage(chatId, emoji.ghost + ' Фильм не найден');
+            return bot.sendMessage(chatId, replicas.movieNotFound);
           }
         });
     }
@@ -266,7 +361,6 @@ const init = () => {
 
 
 const db = database.init(() => {
-  console.log(2);
   init();
 });
 db.config.queryFormat = function(query, values) {

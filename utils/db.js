@@ -1,4 +1,7 @@
+const Promise = require('bluebird');
 const mysql = require('mysql');
+Promise.promisifyAll(require('mysql/lib/Connection').prototype);
+Promise.promisifyAll(require('mysql/lib/Pool').prototype);
 
 var db;
 
@@ -22,7 +25,7 @@ module.exports.init = (callback) => {
     callback();
   });
 
-  return db;
+  return Promise.promisifyAll(db);
 };
 
 module.exports.queryLog = (query, result, err) => {
