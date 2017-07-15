@@ -12,7 +12,7 @@ var parse = (ii) => {
   var options = {
       url: 'http://127.0.0.1:8080/?url='+links[ii]
   }
-  request.get(options, function (err, res, body) {
+  request.get(options, (err, res, body) => {
       if (err) {
         console.log(err);
         if (err.code == 'ECONNRESET') {
@@ -40,7 +40,7 @@ var parse = (ii) => {
   });
 }
 
-fs.readFile('links', 'utf8', function(err, contents) {
+fs.readFile('links', 'utf8', (err, contents) => {
   var l = contents.split('\n');
   for (var i = 0; i < l.length; i++) {
     if (l[i] != '') links.push(l[i]);

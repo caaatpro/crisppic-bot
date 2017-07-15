@@ -1,6 +1,7 @@
 var fs = require('fs'),
   request = require('request'),
   mysql = require('mysql');
+  mysql = require('mysql');
 
 const db = mysql.createConnection({
   host: '89.223.29.88',
@@ -12,7 +13,7 @@ const db = mysql.createConnection({
 var movies = [];
 
 var query = 'SELECT id, kinopoisk_id FROM movies WHERE poster = ""';
-db.query(query, function(err, result) {
+db.query(query, (err, result) => {
   if (err) throw err;
 
   for (var i = 0; i < result.length; i++) {
@@ -22,10 +23,10 @@ db.query(query, function(err, result) {
   download(0);
 });
 
-var download = function(i) {
+var download = (i) => {
   var uri = 'https://st.kp.yandex.net/images/film_big/'+movies[i].kinopoisk_id+'.jpg';
   var filename = new Date().getTime()+'.jpg';
-  request.head(uri, function(err, res, body) {
+  request.head(uri, (err, res, body) => {
     if (err) console.log(err);
 
     if (res.req.path == '/images/no-poster.gif') {
@@ -41,7 +42,7 @@ var download = function(i) {
 var updateMovie = (i, photoUrl) => {
   var query = 'UPDATE movies SET poster = "'+photoUrl+'" WHERE id = '+movies[i].id;
   console.log(query);
-  db.query(query, function(err, result) {
+  db.query(query, (err, result) => {
     if (err) throw err;
 
     download(i+1);

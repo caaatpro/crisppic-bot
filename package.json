@@ -13,6 +13,7 @@
     "http": "0.0.0",
     "iconv-lite": "^0.4.18",
     "mysql": "^2.13.0",
+    "node-telegram-bot-api": "^0.27.1",
     "request": "^2.81.0",
     "socks5-http-client": "^1.0.2",
     "socks5-https-client": "^1.2.1",

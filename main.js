@@ -1,20 +1,21 @@
 const request = require('request'),
       cheerio = require('cheerio'),
       iconv = require('iconv-lite');
-      mysql = require('mysql'),
       http = require('http'),
       url = require('url'),
-      TorControl = require('tor-control');
+      TorControl = require('tor-control'),
+      Agent = require('socks5-https-client/lib/Agent'),
+      database = require('./utils/db');
 
-const db = mysql.createConnection({
-  host: '89.223.29.88',
-  user: 'movies',
-  password: 'i48mAtrgcV9BRjNn',
-  database: 'movies'
+const config = {
+  port: 8080
+};
+
+const db = database.init(() => {
+  console.log(2);
+  init();
 });
-
 db.config.queryFormat = function (query, values) {
-  if (!values) return query;
   return query.replace(/\{(\w+)\}/g, function (txt, key) {
     if (values.hasOwnProperty(key)) {
       return this.escape(values[key]);
@@ -23,10 +24,10 @@ db.config.queryFormat = function (query, values) {
   }.bind(this));
 };
 
+
 var newCircuit = false;
 
-var control = new TorControl(),
-    Agent = require('socks5-https-client/lib/Agent');
+var control = new TorControl();
 
 var GENRES = {},
     COUNTRIES = {};
@@ -52,18 +53,7 @@ var initFinish = () => {
   }
 };
 
-db.connect(function(err) {
-  if (err) {
-    throw err;
-    process.exit();
-  }
-  console.log('DB Connected!');
-
-  init();
-});
-
-
-http.createServer(function (request, response) {
+http.createServer((request, response) => {
   var queryData = url.parse(request.url, true).query;
   response.writeHead(200, {'Content-Type': 'text/plain'});
 
@@ -80,26 +70,16 @@ http.createServer(function (request, response) {
       console.log(result);
       response.end(JSON.stringify(result));
     });
+  } else if (queryData.movieId) {
+    getMovieById(queryData.movieId, (result) => {
+      console.log(result);
+      response.end(JSON.stringify(result));
+    });
   }
 
-  /*console.log(queryData.title);
-  queryData.title = decodeURI(queryData.title);
-  console.log(queryData.title);
+  console.log('Server listening at port %d', config.port);
 
-  if (queryData.title) {
-    getMovie(queryData.title, function (result) {
-      console.log(result[0]);
-      if (result.length) {
-        response.end(JSON.stringify(result[0]));
-      } else {
-        response.end('Фильм не найден');
-      }
-    });
-
-  } else {
-    console.log('Фильм не найден');
-  }*/
-}).listen(8080);
+}).listen(config.port);
 
 var getMovieByUrl = (url, callback) => {
   // Movie
@@ -118,7 +98,7 @@ var getMovieByUrl = (url, callback) => {
       encoding: 'utf-8'
   }
 
-  request(options, function (err, res, body) {
+  request(options, (err, res, body) => {
       if (err) {
         console.log(err);
         return getMovieByUrl(url, callback);
@@ -138,7 +118,7 @@ var getMovieByUrl = (url, callback) => {
           return getMovieByUrl(url, callback);
         } else {
           newCircuit = true;
-          control.signalNewnym(function(err, status) { // Get a new circuit
+          control.signalNewnym((err, status) => { // Get a new circuit
             newCircuit = false;
             console.log('Get a new circuit');
             if (err) {
@@ -221,66 +201,40 @@ var getMovieByUrl = (url, callback) => {
   });
 };
 
-// Search
-/*var options = {
-    url: 'https://www.kinopoisk.ru/s/type/film/list/1/find/%E3%E0%E4%EA%E8%E9/',
-    encoding: null
-}*/
-/*
-request(options, function (err, res, body) {
-    if (err) throw err;
-    if (res.statusCode != 200) {
-      return;
-    }
 
-    $ = cheerio.load(iconv.decode(body, 'win1251'));
-
-    var elements = $('#block_left_pad .element');
-    for (var i = 0; i < elements.length; i++) {
-      var e = $(elements[i]).find('.name>a')
-      // console.log(e.text());
-      // console.log(e.data('url'));
-    }
-});*/
-
-var queryLog = (query, result, 	err) => {
-  if (err == null) {
-    error = 0;
-  } else {
-    error = 1;
-  }
-
-  db.query('INSERT `querylogs` (text, result, error) VALUES ({text}, {result}, {error})', { text: query, result: result, error: error }, function(err, result) {
+var getMovie = (search, callback) => {
+  db.query('SELECT * FROM `movies` WHERE MATCH (title, alternativeTitle) AGAINST ({search}) LIMIT 15', { search: search }, (err, result) => {
     if (err) throw err;
 
-    console.log(result);
-  });
-}
-
-
-function getMovie(search, callback) {
-  db.query('SELECT * FROM `movies` WHERE MATCH (title, alternativeTitle) AGAINST ({search}) LIMIT 1', { search: search }, function(err, result) {
-    if (err) throw err;
-
-    queryLog(this.sql, result.length, err);
+    // database.queryLog(this.sql, result.length, err);
 
     callback(result);
   });
 }
 
-function saveMovie(data) {
+var getMovieById = (id, callback) => {
+  db.query('SELECT * FROM `movies` WHERE id = {id}', { id: id }, (err, result) => {
+    if (err) throw err;
+
+    // database.queryLog(this.sql, result.length, err);
+
+    callback(result);
+  });
+}
+
+var saveMovie = (data) => {
   data.countries = data.countries;
   data.genres = data.genres;
   data.duration = data.duration;
 
   var query = 'SELECT * FROM `movies` WHERE type = "'+data.type+'" AND alternativeTitle = "'+data.alternativeTitle+'" AND year = "'+data.year+'"';
-  db.query(query, function(err, result) {
+  db.query(query, (err, result) => {
     if (err) throw err;
 
     if (result.length == 0) {
       query = 'INSERT `movies` (type, title, alternativeTitle, countries, genres, duration, year, age, description, premiere, kinopoisk_rating, IMDb_rating, kinopoisk_id) VALUES ("'+data.type+'", "'+data.title+'", "'+data.alternativeTitle+'", "'+data.countries+'", "'+data.genres+'", "'+data.duration+'", "'+data.year+'", "'+data.age+'", "'+data.description+'", "'+data.premiere+'", "'+data.kinopoisk_rating+'", "'+data.IMDb_rating+'", "'+data.kinopoisk_id+'")';
 
-      db.query(query, function(err, result) {
+      db.query(query, (err, result) => {
         if (err) throw err;
 
         console.log(result.insertId);
@@ -291,9 +245,9 @@ function saveMovie(data) {
 
 }
 
-function getGenres(callback) {
+var getGenres = (callback) => {
   var query = 'SELECT * FROM `genres`';
-  db.query(query, function(err, result) {
+  db.query(query, (err, result) => {
     if (err) throw err;
 
     for (var ganre of result) {
@@ -302,7 +256,7 @@ function getGenres(callback) {
     callback();
   });
 }
-function getGenre(name) {
+var getGenre = (name) => {
   for (var key in GENRES) {
     if (GENRES.hasOwnProperty(key)) {
       if (GENRES[key].ru == name || GENRES[key].en == name) {
@@ -314,9 +268,9 @@ function getGenre(name) {
   return 0;
 }
 
-function getCountries(callback) {
+var getCountries = (callback) => {
   var query = 'SELECT * FROM `countries`';
-  db.query(query, function(err, result) {
+  db.query(query, (err, result) => {
     if (err) throw err;
 
     for (var countrie of result) {
@@ -325,7 +279,7 @@ function getCountries(callback) {
     callback();
   });
 }
-function getCountrie(name) {
+var getCountrie = (name) => {
   for (var key in COUNTRIES) {
     if (COUNTRIES.hasOwnProperty(key)) {
       if (COUNTRIES[key].ru == name || COUNTRIES[key].en == name) {
@@ -337,10 +291,10 @@ function getCountrie(name) {
   return 0;
 }
 
-function saveCountrie(data, callback) {
+var saveCountrie = (data, callback) => {
 
 }
 
-function updateMovie(data, callback) {
+var updateMovie = (data, callback) => {
 
 }
