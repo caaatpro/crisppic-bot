@@ -32,9 +32,9 @@ var lastmessage = {};
 
 var waitInputDate = 0;
 
-const searchMovie = (name, callback) => {
+const searchMovie = (name, telegramId, callback) => {
   var options = {
-    url: movieApi + '?search=' + encodeURI(name)
+    url: movieApi + '?search=' + encodeURI(name) + '&telegramId=' + telegramId
   }
   request.get(options, (err, res, body) => {
     if (err) console.log(err);
@@ -56,7 +56,7 @@ const searchMovie = (name, callback) => {
 
 const getWatchMovie = (id, telegramId, callback) => {
   var options = {
-    url: movieApi + '?watchMovieId=' + id + '&telegramId='+telegramId
+    url: movieApi + '?watchMovieId=' + id + '&telegramId=' + telegramId
   }
   console.log(id, telegramId);
   request.get(options, (err, res, body) => {
@@ -79,7 +79,7 @@ const getWatchMovie = (id, telegramId, callback) => {
 
 const setWatchMovie = (id, telegramId, callback) => {
   var options = {
-    url: movieApi + '?setWatchMovieId=' + id + '&telegramId='+telegramId
+    url: movieApi + '?setWatchMovieId=' + id + '&telegramId=' + telegramId
   }
   console.log(id, telegramId);
   request.get(options, (err, res, body) => {
@@ -102,7 +102,7 @@ const setWatchMovie = (id, telegramId, callback) => {
 
 const getMovie = (id, telegramId, callback) => {
   var options = {
-    url: movieApi + '?movieId=' + id + '&telegramId='+telegramId
+    url: movieApi + '?movieId=' + id + '&telegramId=' + telegramId
   }
   request.get(options, (err, res, body) => {
     if (err) console.log(err);
@@ -158,15 +158,15 @@ const messageHandler = (message) => {
 
   // message log
   db.queryAsync('INSERT messages (chatId, text) VALUES ({chatId}, {text})', {
-    chatId: message.chat.id,
-    text: message.text
-  })
-  .then(function(result) {
-    console.log('1 record inserted');
-  })
-  .catch(function(error) {
-    console.log(error);
-  });
+      chatId: message.chat.id,
+      text: message.text
+    })
+    .then(function(result) {
+      console.log('1 record inserted');
+    })
+    .catch(function(error) {
+      console.log(error);
+    });
 };
 
 
@@ -211,14 +211,14 @@ const init = () => {
   });
 
   bot.on('callback_query', function(message) {
+    console.log(message.data);
     switch (message.data) {
       case 'callback_add_view_cancel':
-        // удаляем сообщение если можно
-
 
         break;
-      case /^callback_views\d+$/.test(message.data) ? message.data: null:
-        var movieId = message.data.replace('callback_views', '');
+      case /^callback_views\d+$/.test(message.data) ? message.data:
+        null:
+          var movieId = message.data.replace('callback_views', '');
         console.log(movieId);
 
         waitInputDate = message.id;
@@ -232,10 +232,10 @@ const init = () => {
           })
         });
 
-
         break;
-      case /^callback_add_view\d+$/.test(message.data) ? message.data: null:
-        var movieId = message.data.replace('callback_add_view', '');
+      case /^callback_add_view\d+$/.test(message.data) ? message.data:
+        null:
+          var movieId = message.data.replace('callback_add_view', '');
         console.log(movieId);
 
         waitInputDate = message.id;
@@ -244,23 +244,12 @@ const init = () => {
         // просим ввести дату
         // выводим кнопку отмена
         //
-        return bot.sendMessage(message.message.chat.id, 'Введите дату просмотра\nНапример: 07.02.2017, вчера или сегодня', {
-          parse_mode: 'Markdown',
-          reply_markup: JSON.stringify({
-            keyboard: [
-              [{
-                text: 'Отмена',
-                callback_data: 'callback_add_view_cancel'
-              }]
-            ]
-          })
-        });
-
 
         break;
 
-      case /^callback_watch\d+$/.test(message.data) ? message.data: null:
-        var movieId = message.data.replace('callback_watch', '');
+      case /^callback_watch\d+$/.test(message.data) ? message.data:
+        null:
+          var movieId = message.data.replace('callback_watch', '');
         console.log(movieId);
         setWatchMovie(movieId, message.from.id, (watch) => {
           bot.editMessageText(message.message.text, {
@@ -270,10 +259,10 @@ const init = () => {
               inline_keyboard: [
                 [{
                   text: 'Посмотрел',
-                  callback_data: 'callback_add_view'+movieId
+                  callback_data: 'callback_add_view' + movieId
                 }, {
                   text: (watch ? emoji.check : '') + 'Буду смотреть',
-                  callback_data: 'callback_watch'+movieId
+                  callback_data: 'callback_watch' + movieId
                 }]
               ]
             })
@@ -289,13 +278,19 @@ const init = () => {
   });
 
   bot.on('message', (message) => {
-    var mt = message.text.toLowerCase()
+    messageHandler(message);
+
+    var mes = message.text.toLowerCase()
     var chatId = message.chat.id;
+    var fromId = message.from.id;
+
+    bot.sendChatAction(chatId, 'typing');
 
     console.log(waitInputDate);
 
-    if (mt == 'отмена') {
-      return bot.sendMessage(message.chat.id, 'Ок', {
+    if (mes == 'отмена') {
+      bot.sendChatAction(chatId, 'typing');
+      return bot.sendMessage(chatId, 'Ок', {
         parse_mode: 'Markdown',
         reply_markup: JSON.stringify({
           hide_keyboard: true
@@ -304,13 +299,20 @@ const init = () => {
     }
 
     if (waitInputDate) {
-      let date = parseDate(message.text);
+      let date = parseDate(mes);
       console.log(date);
 
       // не меньше дата релиза
       // не больше текущая дата
 
       if (date.date) {
+        var options = {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        };
+        console.log(date.date.toLocaleDateString('ru-RU'), options);
         var text = date.date.getDate() + '.' + date.date.getMonth() + '.' + date.date.getFullYear(); // 2 февраля 2017
 
         var keyboard = [
@@ -330,7 +332,9 @@ const init = () => {
           }]
         ];
       }
-      return bot.sendMessage(message.chat.id, text, {
+
+      bot.sendChatAction(chatId, 'typing');
+      return bot.sendMessage(chatId, text, {
         parse_mode: 'Markdown',
         reply_markup: JSON.stringify({
           keyboard: keyboard
@@ -338,78 +342,80 @@ const init = () => {
       });
     }
 
-    switch (message.text) {
+    switch (mes) {
       case '/start':
-        messageHandler(message);
 
+        bot.sendChatAction(chatId, 'typing');
         bot.sendMessage(chatId, 'Hello!', {
           caption: 'I\'m a bot!'
         });
         break;
-      case /^\/\d+$/.test(message.text) ? message.text: null:
-          messageHandler(message);
+      case /^\/\d+$/.test(mes) ? mes:
+        null:
+          getMovie(mes.substr(1), fromId, (result) => {
+            console.log(result);
+            if (result.error) {
+              bot.sendChatAction(chatId, 'typing');
+              return bot.sendMessage(chatId, replicas.movieNotFound);
+            }
 
-        getMovie(message.text.substr(1), message.from.id, (result) => {
-          if (result == 'bad') {
-            return bot.sendMessage(chatId, replicas.error);
-          }
+            let movie = result.movie;
+            let watch = result.watch;
+            let views = result.views;
+            console.log(result);
 
-          console.log(result.movie.length);
-
-          if (result.movie.length) {
-            var watch = false;
-            if (result.watch.length) watch = true;
-
-            return bot.sendMessage(chatId, formatOneMovie(result.movie[0]), {
+            return bot.sendMessage(chatId, formatOneMovie(movie), {
               parse_mode: 'Markdown',
               reply_markup: JSON.stringify({
                 inline_keyboard: [
                   [{
                     text: 'Посмотрел',
-                    callback_data: 'callback_add_view'+result.movie[0].id
+                    callback_data: 'callback_add_view' + movie.id
                   }, {
                     text: (watch ? emoji.check : '') + 'Буду смотреть',
-                    callback_data: 'callback_watch'+result.movie[0].id
+                    callback_data: 'callback_watch' + movie.id
                   }]
                 ]
               })
             });
-          } else {
-            return bot.sendMessage(chatId, replicas.movieNotFound);
-          }
-        });
+          });
         break;
       default:
-        messageHandler(message);
-
-        searchMovie(message.text, (movie) => {
-          console.log(movie);
-          if (movie == 'bad') {
-            return bot.sendMessage(chatId, replicas.error);
+        searchMovie(mes, fromId, (result) => {
+          console.log(result);
+          if (result.error) {
+            bot.sendChatAction(chatId, 'typing');
+            return bot.sendMessage(chatId, replicas.movieNotFound);
           }
 
-          console.log(movie.length);
+          movie = result;
 
           if (movie.length > 1) {
+            bot.sendChatAction(chatId, 'typing');
             return bot.sendMessage(chatId, formatMovies(movie), {
               parse_mode: 'Markdown'
             });
           } else if (movie.length == 1) {
-            return bot.sendMessage(chatId, formatOneMovie(movie[0]), {
+            var watch = false;
+            if (movie.watch) watch = true;
+
+            bot.sendChatAction(chatId, 'typing');
+            return bot.sendMessage(chatId, formatOneMovie(movie.movie[0]), {
               parse_mode: 'Markdown',
               reply_markup: JSON.stringify({
                 inline_keyboard: [
                   [{
                     text: 'Посмотрел',
-                    callback_data: '1'
+                    callback_data: 'callback_add_view' + movie.movie[0].id
                   }, {
-                    text: 'Буду смотреть',
-                    callback_data: 'data 2'
+                    text: (watch ? emoji.check : '') + 'Буду смотреть',
+                    callback_data: 'callback_watch' + movie.movie[0].id
                   }]
                 ]
               })
             });
           } else {
+            bot.sendChatAction(chatId, 'typing');
             return bot.sendMessage(chatId, replicas.movieNotFound);
           }
         });

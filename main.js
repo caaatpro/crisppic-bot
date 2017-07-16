@@ -11,10 +11,21 @@ const config = {
   port: 8080
 };
 
+var newCircuit = false;
+
+var control = new TorControl();
+
+var GENRES = {},
+  COUNTRIES = {};
 
 const db = database.init(() => {
-  console.log(2);
-  init();
+  getGenres().then(() => {
+    console.log('Genres ok');
+  });
+  getCountries().then(() => {
+    console.log('Countries ok');
+  });
+
 });
 db.config.queryFormat = function(query, values) {
   return query.replace(/\{(\w+)\}/g, function(txt, key) {
@@ -25,77 +36,35 @@ db.config.queryFormat = function(query, values) {
   }.bind(this));
 };
 
-var newCircuit = false;
-
-var control = new TorControl();
-
-var GENRES = {},
-  COUNTRIES = {};
-
-var inits = 2;
-
-var init = () => {
-
-  /*const makeRequest = async () => {
-    let [rainbow, food] = await Promise.all([db.queryAsync('SELECT * FROM `genres`'), db.queryAsync('SELECT * FROM `genres`')])
-    return {rainbow, food};
-  }
-
-  makeRequest().then((result) => {
-    console.log(result);
-  })*/
-
-  getGenres(() => {
-    console.log('Genres ok');
-    initFinish();
-  });
-  getCountries(() => {
-    console.log('Countries ok');
-    initFinish();
-  });
-};
-
-var initFinish = () => {
-  inits--;
-  if (inits == 0) {
-    console.log('Inits ok\n');
-
-  }
-};
-
 http.createServer((request, response) => {
   var queryData = url.parse(request.url, true).query;
   response.writeHead(200, {
     'Content-Type': 'text/plain'
   });
 
+  var telegramId = 0;
+  if (queryData.telegramId) {
+    telegramId = queryData.telegramId;
+  }
+
   if (queryData.url) {
     getMovieByUrl(decodeURI(queryData.url), (result) => {
       response.end(JSON.stringify(result));
     });
   } else if (queryData.search) {
-    getMovie(decodeURI(queryData.search))
+    getMovieByTitle(decodeURI(queryData.search), telegramId)
       .then((result) => {
         response.end(JSON.stringify(result));
       });
   } else if (queryData.movieId) {
-    var telegramId = 0;
-    if (queryData.telegramId) {
-      telegramId = queryData.telegramId;
-    }
     getMovieById(queryData.movieId, telegramId)
       .then((result) => {
         console.log(result);
         response.end(JSON.stringify(result));
       });
   } else if (queryData.watchMovieId) {
-    var telegramId = 0;
-    if (queryData.telegramId) {
-      telegramId = queryData.telegramId;
-    }
-
-    let watch = async () => {
-      let user = await userInfo(queryData.telegramId);
+    let watch = async() => {
+      let user = await userInfo(telegramId);
       let result = await userGetWatch(queryData.watchMovieId, user[0].id);
       return result;
     };
@@ -109,7 +78,7 @@ http.createServer((request, response) => {
       telegramId = queryData.telegramId;
     }
 
-    let watch = async () => {
+    let watch = async() => {
       let user = await userInfo(queryData.telegramId);
       let result = await userSetWatch(queryData.setWatchMovieId, user[0].id);
       return result;
@@ -122,131 +91,35 @@ http.createServer((request, response) => {
 }).listen(config.port);
 console.log('Server listening at port %d', config.port);
 
-var getMovieByUrl = (url, callback) => {
-  // Movie
-  var options = {
-    url: url,
-    method: 'GET',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.12; rv:54.0) Gecko/20100101 Firefox/54.0'
-    },
-    // strictSSL: true,
-    agentClass: Agent,
-    agentOptions: {
-      socksHost: '127.0.0.1',
-      socksPort: '9050'
-    },
-    encoding: 'utf-8'
-  }
-
-  request(options, (err, res, body) => {
-    if (err) {
-      console.log(err);
-      return getMovieByUrl(url, callback);
-    }
-
-    if (res.statusCode != 200) {
-      console.log('Error status ' + res.statusCode);
-      return;
-    }
-
-    $ = cheerio.load(body);
-
-    if ($('title').text() == 'КиноПоиск.ru') {
-      console.log('Блин!');
-
-      if (newCircuit) {
-        return getMovieByUrl(url, callback);
-      } else {
-        newCircuit = true;
-        control.signalNewnym((err, status) => { // Get a new circuit
-          newCircuit = false;
-          console.log('Get a new circuit');
-          if (err) {
-            console.log(err);
-            return;
-          }
-
-          console.log(status);
-          console.log(err);
-
-          return getMovieByUrl(url, callback);
-        });
-      }
-
-      // callback('bad');
-      return;
-    }
-
-    var movie = {
-      'type': 'movie',
-      'title': '',
-      'alternativeTitle': '',
-      'year': '',
-      'countries': '',
-      'genres': '',
-      'duration': '',
-      'premiere': '',
-      'description': '',
-      'kinopoisk_rating': '',
-      'IMDb_rating': '',
-      'age': '',
-      'kinopoisk_id': res.request.uri.path.split('/')[2]
-    };
-
-    movie.title = $('.film-header__title').text(); // Название
-    if ($('.film-header__movie-type')) {
-      console.log($('.film-header__movie-type').text());
-    }
-    movie.alternativeTitle = $('.film-meta__title').text().trim(); // Оригинальное название
-    movie.description = $('.film-description .kinoisland__content').text().trim(); // Описание
-
-    if (movie.kinopoisk_id == '34074') {
-      movie.genres = 'семейный';
-    } else {
-      movie.genres = $('.movie-tags').attr('content').trim();
-    }
-    movie.kinopoisk_rating = $('.rating-button__rating').first().text().trim();
-
-    var table = $('.film-info tr');
-    for (var i = 0; i < table.length; i++) {
-      var tdName = $($(table[i]).find('td')[0]).text().trim();
-      var tdValue = $($(table[i]).find('td')[1]).text().trim();
-
-      switch (tdName) {
-        case 'Год производства':
-          movie.year = tdValue;
-          break;
-        case 'Страна':
-          movie.countries = tdValue;
-          break;
-        case 'Время':
-          movie.duration = tdValue;
-          break;
-        case 'Премьера в мире':
-          movie.premiere = tdValue;
-          break;
-        case 'Возраст':
-          movie.age = tdValue;
-          break;
-        case 'IMDb':
-          movie.IMDb_rating = tdValue;
-          break;
-        default:
-
-      }
-    }
-
-    saveMovie(movie);
-    callback(movie);
-  });
-};
 
 
-var getMovie = async(search) => {
-  return db.queryAsync('SELECT * FROM `movies` WHERE MATCH (title, alternativeTitle) AGAINST ({search}) LIMIT 15', {
+var getMovieByTitle = async(search, telegramId) => {
+  let movie = await db.queryAsync('SELECT * FROM `movies` WHERE MATCH (title, alternativeTitle) AGAINST ({search}) LIMIT 15', {
     search: search
   });
+  
+  if (movie.length == 0) {
+    return {
+      'error': '404'
+    }
+  }
+
+  if (movie.length == 1) {
+    let user = await userInfo(telegramId);
+    console.log(telegramId);
+    console.log(user);
+    let [views, watch] = await Promise.all([
+      userGetViews(movie[0].id, user[0].id),
+      userGetWatch(movie[0].id, user[0].id)
+    ]);
+
+    return {
+      movie,
+      watch,
+      views
+    };
+  }
+  return movie;
 };
 
 var userGetViews = async(movieID, userID) => {
@@ -275,9 +148,6 @@ var userSetWatch = async(movieID, userID) => {
     userID: userID
   });
 
-  console.log(123);
-  console.log(userMovieWatch);
-
   if (userMovieWatch.length) {
     // remove
     await db.queryAsync('DELETE FROM `userMovie` WHERE type = {type} AND userID = {userID} AND movieID = {movieID} LIMIT 1', {
@@ -287,7 +157,6 @@ var userSetWatch = async(movieID, userID) => {
     });
     return false;
   } else {
-    console.log(movieID);
     // insert
     await db.queryAsync('INSERT `userMovie` (type, userID, movieID) VALUES ({type}, {userID}, {movieID})', {
       type: 1,
@@ -313,10 +182,26 @@ var getMovieById = async(id, telegramId) => {
     userInfo(telegramId)
   ]);
 
-  let [watch, views] = await Promise.all([
-    userGetViews(id, user[0].id),
-    userGetWatch(id, user[0].id)
+  console.log(movie);
+
+  if (movie.length == 0) {
+    return {
+      'error': '404'
+    }
+  }
+
+  movie = movie[0];
+
+  console.log(movie);
+
+  let [views, watch] = await Promise.all([
+    userGetViews(movie.id, user[0].id),
+    userGetWatch(movie.id, user[0].id)
   ]);
+
+  watch = watch.length ? true : false;
+
+  views = views.length;
 
   return {
     movie,
@@ -325,41 +210,12 @@ var getMovieById = async(id, telegramId) => {
   };
 };
 
-var saveMovie = (data) => {
-  data.countries = data.countries;
-  data.genres = data.genres;
-  data.duration = data.duration;
-
-  var query = 'SELECT * FROM `movies` WHERE type = "' + data.type + '" AND alternativeTitle = "' + data.alternativeTitle + '" AND year = "' + data.year + '"';
-  db.query(query, (err, result) => {
-    if (err) throw err;
-
-    if (result.length == 0) {
-      query = 'INSERT `movies` (type, title, alternativeTitle, countries, genres, duration, year, age, description, premiere, kinopoisk_rating, IMDb_rating, kinopoisk_id) VALUES ("' + data.type + '", "' + data.title + '", "' + data.alternativeTitle + '", "' + data.countries + '", "' + data.genres + '", "' + data.duration + '", "' + data.year + '", "' + data.age + '", "' + data.description + '", "' + data.premiere + '", "' + data.kinopoisk_rating + '", "' + data.IMDb_rating + '", "' + data.kinopoisk_id + '")';
-
-      db.query(query, (err, result) => {
-        if (err) throw err;
-
-        console.log(result.insertId);
-        console.log('1 record inserted');
-      });
-    }
-  });
-
-}
-
-var getGenres = (callback) => {
-  db.queryAsync('SELECT * FROM `genres`')
-    .then(function(result) {
-      for (var ganre of result) {
-        GENRES[ganre.id] = ganre;
-      }
-      callback();
-    })
-    .catch(function(error) {
-      console.log(error);
-    });
-}
+var getGenres = async() => {
+  let result = await db.queryAsync('SELECT * FROM `genres`');
+  for (var ganre of result) {
+    GENRES[ganre.id] = ganre;
+  }
+};
 var getGenre = (name) => {
   for (var key in GENRES) {
     if (GENRES.hasOwnProperty(key)) {
@@ -372,17 +228,11 @@ var getGenre = (name) => {
   return 0;
 }
 
-var getCountries = (callback) => {
-  db.queryAsync('SELECT * FROM `countries`')
-    .then(function(result) {
-      for (var countrie of result) {
-        COUNTRIES[countrie.id] = countrie;
-      }
-      callback();
-    })
-    .catch(function(error) {
-      console.log(error);
-    });
+var getCountries = async() => {
+  let result = await db.queryAsync('SELECT * FROM `countries`');
+  for (var countrie of result) {
+    COUNTRIES[countrie.id] = countrie;
+  }
 }
 
 var getCountrie = (name) => {
@@ -395,12 +245,4 @@ var getCountrie = (name) => {
   }
 
   return 0;
-}
-
-var saveCountrie = (data, callback) => {
-
-}
-
-var updateMovie = (data, callback) => {
-
 }
