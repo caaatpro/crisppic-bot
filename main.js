@@ -5,7 +5,8 @@ const request = require('request'),
   url = require('url'),
   TorControl = require('tor-control'),
   Agent = require('socks5-https-client/lib/Agent'),
-  database = require('./utils/db');
+  database = require('./utils/db'),
+  textUtil = require('./utils/text');
 
 const config = {
   port: 8080
@@ -91,13 +92,36 @@ http.createServer((request, response) => {
 }).listen(config.port);
 console.log('Server listening at port %d', config.port);
 
+var movieHandler = (movie) => {
+  // genres
+  movie.genres = movie.genres.split(',');
+  for (var i = 0; i < movie.genres.length; i++) {
+    movie.genres[i] = GENRES[movie.genres[i]].ru;
+  }
+  movie.genres = movie.genres.join(', ');
 
+  // countries
+  movie.countries = movie.countries.split(',');
+  for (var i = 0; i < movie.countries.length; i++) {
+    movie.countries[i] = COUNTRIES[movie.countries[i]].ru;
+  }
+  movie.countries = movie.countries.join(', ');
+
+  // duration
+  if (movie.duration < 60) {
+    movie.duration = movie.duration + ' мин.';
+  } else {
+    movie.duration = Math.floor(movie.duration/60) + ' час. ' + movie.duration%60 + ' мин.';
+  }
+
+  return movie;
+};
 
 var getMovieByTitle = async(search, telegramId) => {
-  let movie = await db.queryAsync('SELECT * FROM `movies` WHERE MATCH (title, alternativeTitle) AGAINST ({search}) LIMIT 15', {
-    search: search
+  let movie = await db.queryAsync('SELECT * FROM `movies` WHERE search LIKE {search} LIMIT 15', {
+    search: '%'+textUtil.cleanExtra(search)+'%'
   });
-  
+
   if (movie.length == 0) {
     return {
       'error': '404'
@@ -105,6 +129,8 @@ var getMovieByTitle = async(search, telegramId) => {
   }
 
   if (movie.length == 1) {
+    movie = movieHandler(movie);
+
     let user = await userInfo(telegramId);
     console.log(telegramId);
     console.log(user);
@@ -190,7 +216,7 @@ var getMovieById = async(id, telegramId) => {
     }
   }
 
-  movie = movie[0];
+  movie = movieHandler(movie[0]);
 
   console.log(movie);
 

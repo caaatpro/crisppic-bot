@@ -1,7 +1,8 @@
 const TelegramBot = require('node-telegram-bot-api'),
   request = require('request'),
   database = require('../utils/db'),
-  parseDate = require('../utils/parseDate');
+  parseDate = require('../utils/parseDate'),
+  textUtil = require('../utils/text');
 
 const token = '427137590:AAG3cYR6WSzov9FD7MIGXdi7pTO31kkoLck';
 var bot;
@@ -128,7 +129,6 @@ const userSave = (message) => {
     telegramId: telegramId
   }, (err, result) => {
     if (err) throw err;
-    // database.queryLog(this.sql, result.length, err);
 
     if (result.length == 0) {
       var first_name = message.from.first_name;
@@ -236,7 +236,6 @@ const init = () => {
       case /^callback_add_view\d+$/.test(message.data) ? message.data:
         null:
           var movieId = message.data.replace('callback_add_view', '');
-        console.log(movieId);
 
         waitInputDate = message.id;
 
@@ -251,10 +250,18 @@ const init = () => {
         null:
           var movieId = message.data.replace('callback_watch', '');
         console.log(movieId);
+        console.log(message.message.text);
+        console.log(message.message.entities);
+
+        if (message.message.entities) {
+          message.message.text = textUtil.Markdown(message.message.text, message.message.entities);
+        }
+
         setWatchMovie(movieId, message.from.id, (watch) => {
           bot.editMessageText(message.message.text, {
             message_id: message.message.message_id,
             chat_id: message.message.chat.id,
+            parse_mode: 'Markdown',
             reply_markup: JSON.stringify({
               inline_keyboard: [
                 [{
@@ -362,7 +369,7 @@ const init = () => {
             let movie = result.movie;
             let watch = result.watch;
             let views = result.views;
-            console.log(result);
+            console.log(formatOneMovie(movie));
 
             return bot.sendMessage(chatId, formatOneMovie(movie), {
               parse_mode: 'Markdown',
