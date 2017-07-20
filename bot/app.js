@@ -22,7 +22,8 @@ const emoji = {
   'actors': '\u{1F3AD}',
   'ghost': '\u{1F47B}',
   'pushpin': '\u{1F4CC}',
-  'check': '\u{2705}'
+  'check': '\u{2705}',
+  'clapper': '\u{1F3AC}'
 };
 const replicas = {
   'movieNotFound': emoji.ghost + ' Фильм не найден',
@@ -31,7 +32,36 @@ const replicas = {
 
 var lastmessage = {};
 
-var waitInputDate = 0;
+var waitInputDate = 0; // !! для конкретного пользователя !!!!!!
+
+var KEYBOARD = [
+  [{
+    text: emoji.clapper + ' Буду смотреть'
+  }, {
+    text: emoji.check + ' Посмотрел'
+  }]
+];
+
+// Клавиатуру отправлять один раз
+
+const sendMessage = (chatId, message, options = {}) => {
+  var rm = {};
+
+  if (options.keyboard) {
+    rm.keyboard = options.keyboard;
+  }
+
+  if (options.inline_keyboard) {
+    rm.inline_keyboard = options.inline_keyboard;
+  }
+
+  console.log(rm);
+
+  bot.sendMessage(chatId, message, {
+    parse_mode: 'Markdown',
+    reply_markup: JSON.stringify(rm)
+  });
+};
 
 const searchMovie = (name, telegramId, callback) => {
   var options = {
@@ -41,7 +71,7 @@ const searchMovie = (name, telegramId, callback) => {
     if (err) console.log(err);
     else if (res.statusCode != 200) {
       console.log('Error status ' + res.statusCode);
-      bot.sendMessage(chatId, 'Error :(');
+      sendMessage(chatId, replicas.error);
       return;
     } else {
       if (JSON.parse(body) == 'bad') {
@@ -64,7 +94,7 @@ const getWatchMovie = (id, telegramId, callback) => {
     if (err) console.log(err);
     else if (res.statusCode != 200) {
       console.log('Error status ' + res.statusCode);
-      bot.sendMessage(chatId, replicas.error);
+      sendMessage(chatId, replicas.error);
       return;
     } else {
       if (JSON.parse(body) == 'bad') {
@@ -87,7 +117,7 @@ const setWatchMovie = (id, telegramId, callback) => {
     if (err) console.log(err);
     else if (res.statusCode != 200) {
       console.log('Error status ' + res.statusCode);
-      bot.sendMessage(chatId, replicas.error);
+      sendMessage(chatId, replicas.error);
       return;
     } else {
       if (JSON.parse(body) == 'bad') {
@@ -109,7 +139,7 @@ const getMovie = (id, telegramId, callback) => {
     if (err) console.log(err);
     else if (res.statusCode != 200) {
       console.log('Error status ' + res.statusCode);
-      bot.sendMessage(chatId, replicas.error);
+      sendMessage(chatId, replicas.error);
       return;
     } else {
       if (JSON.parse(body) == 'bad') {
@@ -223,13 +253,10 @@ const init = () => {
 
         waitInputDate = message.id;
 
-        return bot.sendMessage(message.message.chat.id, 'Введите дату просмотра\nНапример: 07.02.2017, вчера или сегодня', {
-          parse_mode: 'Markdown',
-          reply_markup: JSON.stringify({
-            keyboard: [
-              ['Отмена']
-            ]
-          })
+        return sendMessage(message.message.chat.id, 'Введите дату просмотра\nНапример: 07.02.2017, вчера или сегодня', {
+          keyboard: [
+            ['Отмена']
+          ]
         });
 
         break;
@@ -287,7 +314,7 @@ const init = () => {
   bot.on('message', (message) => {
     messageHandler(message);
 
-    var mes = message.text.toLowerCase()
+    var mes = message.text ? message.text.toLowerCase() : message.text;
     var chatId = message.chat.id;
     var fromId = message.from.id;
 
@@ -297,12 +324,17 @@ const init = () => {
 
     if (mes == 'отмена') {
       bot.sendChatAction(chatId, 'typing');
-      return bot.sendMessage(chatId, 'Ок', {
-        parse_mode: 'Markdown',
-        reply_markup: JSON.stringify({
-          hide_keyboard: true
-        })
-      });
+      return sendMessage(chatId, 'Ок');
+    }
+
+    if (mes == emoji.check + ' посмотрел') {
+      bot.sendChatAction(chatId, 'typing');
+      return sendMessage(chatId, 'Ок. Посмотрел');
+    }
+
+    if (mes == emoji.clapper + ' буду смотреть') {
+      bot.sendChatAction(chatId, 'typing');
+      return sendMessage(chatId, 'Ок. Буду смотреть');
     }
 
     if (waitInputDate) {
@@ -341,20 +373,16 @@ const init = () => {
       }
 
       bot.sendChatAction(chatId, 'typing');
-      return bot.sendMessage(chatId, text, {
-        parse_mode: 'Markdown',
-        reply_markup: JSON.stringify({
-          keyboard: keyboard
-        })
+      return sendMessage(chatId, text, {
+        keyboard: keyboard
       });
     }
 
     switch (mes) {
       case '/start':
-
         bot.sendChatAction(chatId, 'typing');
-        bot.sendMessage(chatId, 'Hello!', {
-          caption: 'I\'m a bot!'
+        sendMessage(chatId, 'Hello!', {
+          keyboard: KEYBOARD
         });
         break;
       case /^\/\d+$/.test(mes) ? mes:
@@ -363,7 +391,7 @@ const init = () => {
             console.log(result);
             if (result.error) {
               bot.sendChatAction(chatId, 'typing');
-              return bot.sendMessage(chatId, replicas.movieNotFound);
+              return sendMessage(chatId, replicas.movieNotFound);
             }
 
             let movie = result.movie;
@@ -371,19 +399,16 @@ const init = () => {
             let views = result.views;
             console.log(formatOneMovie(movie));
 
-            return bot.sendMessage(chatId, formatOneMovie(movie), {
-              parse_mode: 'Markdown',
-              reply_markup: JSON.stringify({
-                inline_keyboard: [
-                  [{
-                    text: 'Посмотрел',
-                    callback_data: 'callback_add_view' + movie.id
-                  }, {
-                    text: (watch ? emoji.check : '') + 'Буду смотреть',
-                    callback_data: 'callback_watch' + movie.id
-                  }]
-                ]
-              })
+            return sendMessage(chatId, formatOneMovie(movie), {
+              inline_keyboard: [
+                [{
+                  text: 'Посмотрел',
+                  callback_data: 'callback_add_view' + movie.id
+                }, {
+                  text: (watch ? emoji.check : '') + 'Буду смотреть',
+                  callback_data: 'callback_watch' + movie.id
+                }]
+              ]
             });
           });
         break;
@@ -392,38 +417,33 @@ const init = () => {
           console.log(result);
           if (result.error) {
             bot.sendChatAction(chatId, 'typing');
-            return bot.sendMessage(chatId, replicas.movieNotFound);
+            return sendMessage(chatId, replicas.movieNotFound);
           }
 
           movie = result;
 
           if (movie.length > 1) {
             bot.sendChatAction(chatId, 'typing');
-            return bot.sendMessage(chatId, formatMovies(movie), {
-              parse_mode: 'Markdown'
-            });
+            return sendMessage(chatId, formatMovies(movie));
           } else if (movie.length == 1) {
             var watch = false;
             if (movie.watch) watch = true;
 
             bot.sendChatAction(chatId, 'typing');
-            return bot.sendMessage(chatId, formatOneMovie(movie.movie[0]), {
-              parse_mode: 'Markdown',
-              reply_markup: JSON.stringify({
-                inline_keyboard: [
-                  [{
-                    text: 'Посмотрел',
-                    callback_data: 'callback_add_view' + movie.movie[0].id
-                  }, {
-                    text: (watch ? emoji.check : '') + 'Буду смотреть',
-                    callback_data: 'callback_watch' + movie.movie[0].id
-                  }]
-                ]
-              })
+            return sendMessage(chatId, formatOneMovie(movie.movie[0]), {
+              inline_keyboard: [
+                [{
+                  text: 'Посмотрел',
+                  callback_data: 'callback_add_view' + movie.movie[0].id
+                }, {
+                  text: (watch ? emoji.check : '') + 'Буду смотреть',
+                  callback_data: 'callback_watch' + movie.movie[0].id
+                }]
+              ]
             });
           } else {
             bot.sendChatAction(chatId, 'typing');
-            return bot.sendMessage(chatId, replicas.movieNotFound);
+            return sendMessage(chatId, replicas.movieNotFound);
           }
         });
     }
