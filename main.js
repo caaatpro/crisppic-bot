@@ -1,20 +1,18 @@
-const request = require('request'),
-  cheerio = require('cheerio'),
-  iconv = require('iconv-lite'),
+const
   http = require('http'),
   url = require('url'),
-  TorControl = require('tor-control'),
+  morgan = require('morgan'),
   Agent = require('socks5-https-client/lib/Agent'),
   database = require('./utils/db'),
   textUtil = require('./utils/text');
+
+const logger = morgan('combined');
 
 const config = {
   port: 8080
 };
 
 var newCircuit = false;
-
-var control = new TorControl();
 
 var GENRES = {},
   COUNTRIES = {};
@@ -37,62 +35,69 @@ db.config.queryFormat = function(query, values) {
   }.bind(this));
 };
 
-http.createServer((request, response) => {
-  var queryData = url.parse(request.url, true).query;
-  response.writeHead(200, {
-    'Content-Type': 'text/plain'
-  });
-
-  var telegramId = 0;
-  if (queryData.telegramId) {
-    telegramId = queryData.telegramId;
-  }
-
-  if (queryData.url) {
-    getMovieByUrl(decodeURI(queryData.url), (result) => {
-      response.end(JSON.stringify(result));
+http.createServer((req, res) => {
+  logger(req, res, (err) => {
+    var queryData = url.parse(req.url, true).query;
+    console.log(queryData);
+    res.writeHead(200, {
+      'Content-Type': 'text/plain'
     });
-  } else if (queryData.search) {
-    getMovieByTitle(decodeURI(queryData.search), telegramId)
-      .then((result) => {
-        response.end(JSON.stringify(result));
-      });
-  } else if (queryData.movieId) {
-    getMovieById(queryData.movieId, telegramId)
-      .then((result) => {
-        console.log(result);
-        response.end(JSON.stringify(result));
-      });
-  } else if (queryData.watchMovieId) {
-    let watch = async() => {
-      let user = await userInfo(telegramId);
-      let result = await userGetWatch(queryData.watchMovieId, user[0].id);
-      return result;
-    };
-    watch()
-      .then((result) => {
-        response.end(JSON.stringify(result));
-      })
-  } else if (queryData.setWatchMovieId) {
+
     var telegramId = 0;
     if (queryData.telegramId) {
       telegramId = queryData.telegramId;
     }
 
-    let watch = async() => {
-      let user = await userInfo(queryData.telegramId);
-      let result = await userSetWatch(queryData.setWatchMovieId, user[0].id);
-      return result;
-    };
-    watch()
-      .then((result) => {
-        response.end(JSON.stringify(result));
+    if (queryData.url) {
+      getMovieByUrl(decodeURI(queryData.url), (result) => {
+        res.end(JSON.stringify(result));
       });
-  }
+    } else if (queryData.search) {
+      getMovieByTitle(decodeURI(queryData.search), telegramId)
+        .then((result) => {
+          res.end(JSON.stringify(result));
+        });
+    } else if (queryData.movieId) {
+      getMovieById(queryData.movieId, telegramId)
+        .then((result) => {
+          console.log(result);
+          res.end(JSON.stringify(result));
+        });
+    } else if (queryData.watchMovieId) {
+      let watch = async() => {
+        let user = await userInfo(telegramId);
+        let result = await userGetWatch(queryData.watchMovieId, user[0].id);
+        return result;
+      };
+      watch()
+        .then((result) => {
+          res.end(JSON.stringify(result));
+        })
+    } else if (queryData.setWatchMovieId) {
+      var telegramId = 0;
+      if (queryData.telegramId) {
+        telegramId = queryData.telegramId;
+      }
+
+      let watch = async() => {
+        let user = await userInfo(queryData.telegramId);
+        let result = await userSetWatch(queryData.setWatchMovieId, user[0].id);
+        return result;
+      };
+      watch()
+        .then((result) => {
+          res.end(JSON.stringify(result));
+        });
+    }
+  });
+
 }).listen(config.port);
 console.log('Server listening at port %d', config.port);
 
 var movieHandler = (movie) => {
+  console.log(movie);
+  console.log(movie.genres);
+  console.log(movie.countries);
   // genres
   movie.genres = movie.genres.split(',');
   for (var i = 0; i < movie.genres.length; i++) {
@@ -111,7 +116,7 @@ var movieHandler = (movie) => {
   if (movie.duration < 60) {
     movie.duration = movie.duration + ' мин.';
   } else {
-    movie.duration = Math.floor(movie.duration/60) + ' час. ' + movie.duration%60 + ' мин.';
+    movie.duration = Math.floor(movie.duration / 60) + ' час. ' + movie.duration % 60 + ' мин.';
   }
 
   return movie;
@@ -119,7 +124,7 @@ var movieHandler = (movie) => {
 
 var getMovieByTitle = async(search, telegramId) => {
   let movie = await db.queryAsync('SELECT * FROM `movies` WHERE search LIKE {search} LIMIT 15', {
-    search: '%'+textUtil.cleanExtra(search)+'%'
+    search: '%' + textUtil.cleanExtra(search) + '%'
   });
 
   if (movie.length == 0) {
@@ -129,14 +134,15 @@ var getMovieByTitle = async(search, telegramId) => {
   }
 
   if (movie.length == 1) {
-    movie = movieHandler(movie);
+    movie = movieHandler(movie[0]);
 
     let user = await userInfo(telegramId);
     console.log(telegramId);
+    console.log(movie);
     console.log(user);
     let [views, watch] = await Promise.all([
-      userGetViews(movie[0].id, user[0].id),
-      userGetWatch(movie[0].id, user[0].id)
+      userGetViews(movie.id, user[0].id),
+      userGetWatch(movie.id, user[0].id)
     ]);
 
     return {

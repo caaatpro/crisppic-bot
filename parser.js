@@ -1,8 +1,68 @@
 const request = require('request'),
-      fs = require('fs');
+      fs = require('fs'),
+      http = require('http'),
+      url = require('url'),
+      morgan = require('morgan'),
+      TorControl = require('tor-control'),
+      cheerio = require('cheerio'),
+      Agent = require('socks5-https-client/lib/Agent'),
+      database = require('./utils/db'),
+      textUtil = require('./utils/text');
+
 // https://st.kp.yandex.net/images/film_big/461.jpg
 var links = [];
+var logger = morgan('combined');
 
+const config = {
+  port: 8080
+};
+
+var GENRES = {},
+  COUNTRIES = {};
+
+var getGenres = async() => {
+  let result = await db.queryAsync('SELECT * FROM `genres`');
+  for (var ganre of result) {
+    GENRES[ganre.id] = ganre;
+  }
+};
+var getGenre = (name) => {
+  for (var key in GENRES) {
+    if (GENRES.hasOwnProperty(key)) {
+      if (GENRES[key].ru == name || GENRES[key].en == name) {
+        return GENRES[key].id;
+      }
+    }
+  }
+
+  return 0;
+}
+var getCountries = async() => {
+  let result = await db.queryAsync('SELECT * FROM `countries`');
+  for (var countrie of result) {
+    COUNTRIES[countrie.id] = countrie;
+  }
+}
+var getCountrie = (name) => {
+  for (var key in COUNTRIES) {
+    if (COUNTRIES.hasOwnProperty(key)) {
+      if (COUNTRIES[key].ru == name || COUNTRIES[key].en == name) {
+        return COUNTRIES[key].id;
+      }
+    }
+  }
+  return 0;
+}
+
+const db = database.init(() => {
+  getGenres().then(() => {
+    console.log('Genres ok');
+  });
+  getCountries().then(() => {
+    console.log('Countries ok');
+  });
+
+});
 
 var getMovieByUrl = (url, callback) => {
   // Movie
@@ -10,16 +70,18 @@ var getMovieByUrl = (url, callback) => {
     url: url,
     method: 'GET',
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.12; rv:54.0) Gecko/20100101 Firefox/54.0'
+      'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; rv:52.0) Gecko/20100101 Firefox/52.0"'
     },
     // strictSSL: true,
     agentClass: Agent,
     agentOptions: {
-      socksHost: '127.0.0.1',
-      socksPort: '9050'
+      socksHost: '67.205.191.44',
+      socksPort: '8080'
     },
     encoding: 'utf-8'
-  }
+  };
+
+  console.log('request');
 
   request(options, (err, res, body) => {
     if (err) {
@@ -34,27 +96,13 @@ var getMovieByUrl = (url, callback) => {
 
     $ = cheerio.load(body);
 
+    console.log(res.request.uri.path);
+
     if ($('title').text() == 'КиноПоиск.ru') {
       console.log('Блин!');
 
-      if (newCircuit) {
-        return getMovieByUrl(url, callback);
-      } else {
-        newCircuit = true;
-        control.signalNewnym((err, status) => { // Get a new circuit
-          newCircuit = false;
-          console.log('Get a new circuit');
-          if (err) {
-            console.log(err);
-            return;
-          }
 
-          console.log(status);
-          console.log(err);
-
-          return getMovieByUrl(url, callback);
-        });
-      }
+      // return getMovieByUrl(url, callback);
 
       // callback('bad');
       return;
@@ -83,11 +131,8 @@ var getMovieByUrl = (url, callback) => {
     movie.alternativeTitle = $('.film-meta__title').text().trim(); // Оригинальное название
     movie.description = $('.film-description .kinoisland__content').text().trim(); // Описание
 
-    if (movie.kinopoisk_id == '34074') {
-      movie.genres = 'семейный';
-    } else {
-      movie.genres = $('.movie-tags').attr('content').trim();
-    }
+    movie.genres = $('.movie-tags').attr('content').trim();
+
     movie.kinopoisk_rating = $('.rating-button__rating').first().text().trim();
 
     var table = $('.film-info tr');
@@ -124,7 +169,6 @@ var getMovieByUrl = (url, callback) => {
   });
 };
 
-
 var saveMovie = (data) => {
   data.countries = data.countries;
   data.genres = data.genres;
@@ -135,7 +179,33 @@ var saveMovie = (data) => {
     if (err) throw err;
 
     if (result.length == 0) {
-      query = 'INSERT `movies` (type, title, alternativeTitle, countries, genres, duration, year, age, description, premiere, kinopoisk_rating, IMDb_rating, kinopoisk_id) VALUES ("' + data.type + '", "' + data.title + '", "' + data.alternativeTitle + '", "' + data.countries + '", "' + data.genres + '", "' + data.duration + '", "' + data.year + '", "' + data.age + '", "' + data.description + '", "' + data.premiere + '", "' + data.kinopoisk_rating + '", "' + data.IMDb_rating + '", "' + data.kinopoisk_id + '")';
+      query = 'INSERT `movies` (type, '+
+                              'title, '+
+                              'alternativeTitle, '+
+                              'countries, '+
+                              'genres, '+
+                              'duration, '+
+                              'year, '+
+                              'age, '+
+                              'description, '+
+                              'premiere, '+
+                              'kinopoisk_rating, '+
+                              'IMDb_rating, '+
+                              'kinopoisk_id'+
+                            ') VALUES ("'+
+                                data.type + '", "' +
+                                data.title + '", "' +
+                                data.alternativeTitle + '", "' +
+                                data.countries + '", "' +
+                                data.genres + '", "' +
+                                data.duration + '", "' +
+                                data.year + '", "' +
+                                data.age + '", "' +
+                                data.description + '", "' +
+                                data.premiere + '", "' +
+                                data.kinopoisk_rating + '", "' +
+                                data.IMDb_rating + '", "' +
+                                data.kinopoisk_id + '")';
 
       db.query(query, (err, result) => {
         if (err) throw err;
@@ -185,10 +255,33 @@ var parse = (ii) => {
   });
 }
 
-fs.readFile('links', 'utf8', (err, contents) => {
-  var l = contents.split('\n');
-  for (var i = 0; i < l.length; i++) {
-    if (l[i] != '') links.push(l[i]);
-  }
-  parse(0);
-});
+var fromFile = (name) => {
+  fs.readFile(name, 'utf8', (err, contents) => {
+    var l = contents.split('\n');
+    for (var i = 0; i < l.length; i++) {
+      if (l[i] != '') links.push(l[i]);
+    }
+    parse(0);
+  });
+}
+
+http.createServer((req, res) => {
+  logger(req, res, function (err) {
+    if (err) console.log(err);
+
+    var queryData = url.parse(req.url, true).query;
+    res.writeHead(200, {
+      'Content-Type': 'text/plain'
+    });
+
+    if (queryData.url) {
+      getMovieByUrl(queryData.url, (result) => {
+
+        res.end(JSON.stringify(result));
+      });
+    } else {
+      res.end('hello, world!')
+    }
+  })
+}).listen(config.port);
+console.log('Server listening at port %d', config.port);

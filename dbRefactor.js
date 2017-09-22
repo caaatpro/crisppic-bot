@@ -17,13 +17,13 @@ var movies;
 var GENRES = {};
 
 var saveCountries = async(title) => {
-  let c = await db.queryAsync('SELECT id FROM `countries` WHERE title = {title} LIMIT 1', {
+  let c = await db.queryAsync('SELECT id FROM `countries` WHERE ru = {title} LIMIT 1', {
     title: title.trim()
   });
   if (c.length) {
     return c[0].id;
   }
-  let c2 = await db.queryAsync('INSERT `countries` (title, alternativeTitle) VALUES ({title}, {alternativeTitle})', {
+  let c2 = await db.queryAsync('INSERT `countries` (ru, en) VALUES ({title}, {alternativeTitle})', {
     title: title.trim(),
     alternativeTitle: ''
   });

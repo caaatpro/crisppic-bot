@@ -1,3 +1,5 @@
 tor sockslistenaddress localhost socksport 9050 controlport 9051
 
+node --inspect --debug-brk main.js 
+
 http://apps.timwhitlock.info/emoji/tables/unicode

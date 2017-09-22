@@ -6,11 +6,12 @@ Promise.promisifyAll(require('mysql/lib/Pool').prototype);
 var db;
 
 module.exports.init = (callback) => {
-  console.log(1);
+  console.log('DB Connecting...');
+  
   db = mysql.createConnection({
     host: '89.223.29.88',
     user: 'movies',
-    password: 'i48mAtrgcV9BRjNn',
+    password: '7805095a6d0fb9c62',
     database: 'movies'
   });
 

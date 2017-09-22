@@ -49,6 +49,7 @@ const sendMessage = (chatId, message, options = {}) => {
 
   if (options.keyboard) {
     rm.keyboard = options.keyboard;
+    rm.resize_keyboard = true;
   }
 
   if (options.inline_keyboard) {
@@ -244,7 +245,7 @@ const init = () => {
     console.log(message.data);
     switch (message.data) {
       case 'callback_add_view_cancel':
-
+        waitInputDate = false;
         break;
       case /^callback_views\d+$/.test(message.data) ? message.data:
         null:
@@ -253,11 +254,6 @@ const init = () => {
 
         waitInputDate = message.id;
 
-        return sendMessage(message.message.chat.id, 'Введите дату просмотра\nНапример: 07.02.2017, вчера или сегодня', {
-          keyboard: [
-            ['Отмена']
-          ]
-        });
 
         break;
       case /^callback_add_view\d+$/.test(message.data) ? message.data:
@@ -265,6 +261,14 @@ const init = () => {
           var movieId = message.data.replace('callback_add_view', '');
 
         waitInputDate = message.id;
+
+        return sendMessage(message.message.chat.id, 'Введите дату просмотра\nНапример: 07.02.2017, вчера или сегодня', {
+          keyboard: [
+            [{
+              text: 'Отмена'
+            }]
+          ]
+        });
 
         // записываем id сообщения
         // просим ввести дату
@@ -323,8 +327,11 @@ const init = () => {
     console.log(waitInputDate);
 
     if (mes == 'отмена') {
+      waitInputDate = 0;
       bot.sendChatAction(chatId, 'typing');
-      return sendMessage(chatId, 'Ок');
+      return sendMessage(chatId, 'Ок', {
+        keyboard: KEYBOARD
+      });
     }
 
     if (mes == emoji.check + ' посмотрел') {
@@ -343,7 +350,7 @@ const init = () => {
 
       // не меньше дата релиза
       // не больше текущая дата
-
+      //
       if (date.date) {
         var options = {
           weekday: 'long',
@@ -353,28 +360,17 @@ const init = () => {
         };
         console.log(date.date.toLocaleDateString('ru-RU'), options);
         var text = date.date.getDate() + '.' + date.date.getMonth() + '.' + date.date.getFullYear(); // 2 февраля 2017
-
-        var keyboard = [
-          [{
-            text: 'Ок'
-          }, {
-            text: 'Отмена'
-          }]
-        ];
       } else {
         var text = 'Не верный формат даты';
-        var keyboard = [
-          [{
-            text: 'Ок'
-          }, {
-            text: 'Отмена'
-          }]
-        ];
       }
 
       bot.sendChatAction(chatId, 'typing');
       return sendMessage(chatId, text, {
-        keyboard: keyboard
+        keyboard: [
+          [{
+            text: 'Отмена'
+          }]
+        ]
       });
     }
 
