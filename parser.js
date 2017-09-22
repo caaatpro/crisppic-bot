@@ -265,6 +265,8 @@ var fromFile = (name) => {
   });
 }
 
+fromFile('links');
+
 http.createServer((req, res) => {
   logger(req, res, function (err) {
     if (err) console.log(err);

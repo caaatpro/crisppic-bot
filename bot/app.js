@@ -9,6 +9,18 @@ var bot;
 
 const movieApi = 'http://127.0.0.1:8080/';
 
+const db = database.init(() => {
+  init();
+});
+db.config.queryFormat = function(query, values) {
+  return query.replace(/\{(\w+)\}/g, function(txt, key) {
+    if (values.hasOwnProperty(key)) {
+      return this.escape(values[key]);
+    }
+    return txt;
+  }.bind(this));
+};
+
 var lastMessage;
 
 const emoji = {
@@ -67,6 +79,28 @@ const sendMessage = (chatId, message, options = {}) => {
 const searchMovie = (name, telegramId, callback) => {
   var options = {
     url: movieApi + '?search=' + encodeURI(name) + '&telegramId=' + telegramId
+  }
+  request.get(options, (err, res, body) => {
+    if (err) console.log(err);
+    else if (res.statusCode != 200) {
+      console.log('Error status ' + res.statusCode);
+      sendMessage(chatId, replicas.error);
+      return;
+    } else {
+      if (JSON.parse(body) == 'bad') {
+        return callback('bad');
+      }
+
+      var movie = JSON.parse(body);
+
+      return callback(movie);
+    }
+  });
+};
+
+const getAllWatch = (telegramId, callback) => {
+  var options = {
+    url: movieApi + '?userGetAllWatch=1&telegramId=' + telegramId
   }
   request.get(options, (err, res, body) => {
     if (err) console.log(err);
@@ -188,16 +222,16 @@ const messageHandler = (message) => {
   userSave(message);
 
   // message log
-  db.queryAsync('INSERT messages (chatId, text) VALUES ({chatId}, {text})', {
-      chatId: message.chat.id,
-      text: message.text
-    })
-    .then(function(result) {
-      console.log('1 record inserted');
-    })
-    .catch(function(error) {
-      console.log(error);
-    });
+  // db.queryAsync('INSERT messages (chatId, text) VALUES ({chatId}, {text})', {
+  //     chatId: message.chat.id,
+  //     text: message.text
+  //   })
+  //   .then(function(result) {
+  //     console.log('1 record inserted');
+  //   })
+  //   .catch(function(error) {
+  //     console.log(error);
+  //   });
 };
 
 
@@ -234,7 +268,60 @@ const formatMovies = (movies) => {
   return text;
 }
 
+const callback_add_view_cancel = (message) => {
+  waitInputDate = false;
+};
+const callback_views = (message) => {
+  var movieId = message.data.replace('callback_views', '');
+  console.log(movieId);
+};
+const callback_add_view = (message) => {
+  var movieId = message.data.replace('callback_add_view', '');
 
+  waitInputDate = message.id;
+
+  return sendMessage(message.message.chat.id, 'Введите дату просмотра\nНапример: 07.02.2017, вчера или сегодня', {
+    keyboard: [
+      [{
+        text: 'Отмена'
+      }]
+    ]
+  });
+
+  // записываем id сообщения
+  // просим ввести дату
+  // выводим кнопку отмена
+  //
+};
+const callback_watch = (message) => {
+  var movieId = message.data.replace('callback_watch', '');
+  console.log(movieId);
+  console.log(message.message.text);
+  console.log(message.message.entities);
+
+  if (message.message.entities) {
+    message.message.text = textUtil.Markdown(message.message.text, message.message.entities);
+  }
+
+  setWatchMovie(movieId, message.from.id, (watch) => {
+    bot.editMessageText(message.message.text, {
+      message_id: message.message.message_id,
+      chat_id: message.message.chat.id,
+      parse_mode: 'Markdown',
+      reply_markup: JSON.stringify({
+        inline_keyboard: [
+          [{
+            text: 'Посмотрел',
+            callback_data: 'callback_add_view' + movieId
+          }, {
+            text: (watch ? emoji.check : '') + 'Буду смотреть',
+            callback_data: 'callback_watch' + movieId
+          }]
+        ]
+      })
+    });
+  });
+};
 
 const init = () => {
   bot = new TelegramBot(token, {
@@ -245,67 +332,25 @@ const init = () => {
     console.log(message.data);
     switch (message.data) {
       case 'callback_add_view_cancel':
-        waitInputDate = false;
+        callback_add_view_cancel(message);
         break;
       case /^callback_views\d+$/.test(message.data) ? message.data:
         null:
-          var movieId = message.data.replace('callback_views', '');
-        console.log(movieId);
 
-        waitInputDate = message.id;
-
+          callback_views(message);
 
         break;
       case /^callback_add_view\d+$/.test(message.data) ? message.data:
         null:
-          var movieId = message.data.replace('callback_add_view', '');
 
-        waitInputDate = message.id;
-
-        return sendMessage(message.message.chat.id, 'Введите дату просмотра\nНапример: 07.02.2017, вчера или сегодня', {
-          keyboard: [
-            [{
-              text: 'Отмена'
-            }]
-          ]
-        });
-
-        // записываем id сообщения
-        // просим ввести дату
-        // выводим кнопку отмена
-        //
+          callback_add_view(message);
 
         break;
 
       case /^callback_watch\d+$/.test(message.data) ? message.data:
         null:
-          var movieId = message.data.replace('callback_watch', '');
-        console.log(movieId);
-        console.log(message.message.text);
-        console.log(message.message.entities);
 
-        if (message.message.entities) {
-          message.message.text = textUtil.Markdown(message.message.text, message.message.entities);
-        }
-
-        setWatchMovie(movieId, message.from.id, (watch) => {
-          bot.editMessageText(message.message.text, {
-            message_id: message.message.message_id,
-            chat_id: message.message.chat.id,
-            parse_mode: 'Markdown',
-            reply_markup: JSON.stringify({
-              inline_keyboard: [
-                [{
-                  text: 'Посмотрел',
-                  callback_data: 'callback_add_view' + movieId
-                }, {
-                  text: (watch ? emoji.check : '') + 'Буду смотреть',
-                  callback_data: 'callback_watch' + movieId
-                }]
-              ]
-            })
-          });
-        });
+          callback_watch(message);
 
         break;
       default:
@@ -336,12 +381,44 @@ const init = () => {
 
     if (mes == emoji.check + ' посмотрел') {
       bot.sendChatAction(chatId, 'typing');
-      return sendMessage(chatId, 'Ок. Посмотрел');
+      return;
     }
 
     if (mes == emoji.clapper + ' буду смотреть') {
       bot.sendChatAction(chatId, 'typing');
-      return sendMessage(chatId, 'Ок. Буду смотреть');
+      return getAllWatch(fromId, (result) => {
+        console.log(result);
+        if (result.error) {
+          bot.sendChatAction(chatId, 'typing');
+          return sendMessage(chatId, replicas.movieNotFound);
+        }
+
+        movie = result;
+
+        if (movie.length > 1) {
+          bot.sendChatAction(chatId, 'typing');
+          return sendMessage(chatId, formatMovies(movie));
+        } else if (movie.length == 1) {
+          var watch = false;
+          if (movie.watch) watch = true;
+
+          bot.sendChatAction(chatId, 'typing');
+          return sendMessage(chatId, formatOneMovie(movie.movie[0]), {
+            inline_keyboard: [
+              [{
+                text: 'Посмотрел',
+                callback_data: 'callback_add_view' + movie.movie[0].id
+              }, {
+                text: (watch ? emoji.check : '') + 'Буду смотреть',
+                callback_data: 'callback_watch' + movie.movie[0].id
+              }]
+            ]
+          });
+        } else {
+          bot.sendChatAction(chatId, 'typing');
+          return sendMessage(chatId, replicas.movieNotFound);
+        }
+      });
     }
 
     if (waitInputDate) {
@@ -444,17 +521,4 @@ const init = () => {
         });
     }
   });
-};
-
-
-const db = database.init(() => {
-  init();
-});
-db.config.queryFormat = function(query, values) {
-  return query.replace(/\{(\w+)\}/g, function(txt, key) {
-    if (values.hasOwnProperty(key)) {
-      return this.escape(values[key]);
-    }
-    return txt;
-  }.bind(this));
 };

@@ -88,6 +88,21 @@ http.createServer((req, res) => {
         .then((result) => {
           res.end(JSON.stringify(result));
         });
+    } else if (queryData.userGetAllWatch) {
+      var telegramId = 0;
+      if (queryData.telegramId) {
+        telegramId = queryData.telegramId;
+      }
+
+      let watch = async() => {
+        let user = await userInfo(queryData.telegramId);
+        let result = await userGetAllWatch(user[0].id);
+        return result;
+      };
+      watch()
+        .then((result) => {
+          res.end(JSON.stringify(result));
+        });
     }
   });
 
@@ -278,3 +293,29 @@ var getCountrie = (name) => {
 
   return 0;
 }
+
+var userGetAllWatch = async(userID) => {
+  // type 1
+  var userMoviesT = await db.queryAsync('SELECT movieId FROM `userMovie` WHERE type = {type} AND userID = {userID}', {
+    type: 1,
+    userID: userID
+  });
+
+  var ids = '';
+  for (let i = 0; i < userMoviesT.length; i++) {
+    ids = ids+userMoviesT[i].movieId+',';
+  }
+  ids = ids.slice(0, -1);
+
+  var userMovies = await db.queryAsync('SELECT * FROM `movies` WHERE id in ('+ids+')');
+
+  console.log(ids);
+
+  console.log(userMovies.length);
+
+  for (let i = 0; i < userMovies.length; i++) {
+    userMovies[i] = movieHandler(userMovies[i]);
+  }
+
+  return userMovies;
+};

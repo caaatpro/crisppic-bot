@@ -7,7 +7,7 @@ var db;
 
 module.exports.init = (callback) => {
   console.log('DB Connecting...');
-  
+
   db = mysql.createConnection({
     host: '89.223.29.88',
     user: 'movies',
@@ -35,6 +35,8 @@ module.exports.queryLog = (query, result, err) => {
   } else {
     error = 1;
   }
+
+  console.log(query);
 
   this.db.query('INSERT `querylogs` (text, result, error) VALUES ({text}, {result}, {error})', { text: query, result: result, error: error }, (err, result) => {
     if (err) throw err;
