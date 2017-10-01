@@ -1,73 +1,22 @@
 const request = require('request'),
       fs = require('fs'),
-      http = require('http'),
       url = require('url'),
-      morgan = require('morgan'),
-      TorControl = require('tor-control'),
       cheerio = require('cheerio'),
       Agent = require('socks5-https-client/lib/Agent'),
-      database = require('./utils/db'),
-      textUtil = require('./utils/text');
+      database = require('./db'),
+      textUtil = require('./text');
 
 // https://st.kp.yandex.net/images/film_big/461.jpg
 var links = [];
-var logger = morgan('combined');
-
-const config = {
-  port: 8080
-};
-
-var GENRES = {},
-  COUNTRIES = {};
-
-var getGenres = async() => {
-  let result = await db.queryAsync('SELECT * FROM `genres`');
-  for (var ganre of result) {
-    GENRES[ganre.id] = ganre;
-  }
-};
-var getGenre = (name) => {
-  for (var key in GENRES) {
-    if (GENRES.hasOwnProperty(key)) {
-      if (GENRES[key].ru == name || GENRES[key].en == name) {
-        return GENRES[key].id;
-      }
-    }
-  }
-
-  return 0;
-}
-var getCountries = async() => {
-  let result = await db.queryAsync('SELECT * FROM `countries`');
-  for (var countrie of result) {
-    COUNTRIES[countrie.id] = countrie;
-  }
-}
-var getCountrie = (name) => {
-  for (var key in COUNTRIES) {
-    if (COUNTRIES.hasOwnProperty(key)) {
-      if (COUNTRIES[key].ru == name || COUNTRIES[key].en == name) {
-        return COUNTRIES[key].id;
-      }
-    }
-  }
-  return 0;
-}
 
 const db = database.init(() => {
-  getGenres().then(() => {
-    console.log('Genres ok');
-  });
-  getCountries().then(() => {
-    console.log('Countries ok');
-  });
 
 });
 
-var getMovieByUrl = (url, callback) => {
+var getMovieByUrl = (kinopoiskId, callback) => {
   // Movie
   var options = {
-    url: url,
+    url: 'https://plus.kinopoisk.ru/film/'+kinopoiskId+'/',
     method: 'GET',
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; rv:52.0) Gecko/20100101 Firefox/52.0"'
@@ -75,8 +24,8 @@ var getMovieByUrl = (url, callback) => {
     // strictSSL: true,
     agentClass: Agent,
     agentOptions: {
-      socksHost: '67.205.191.44',
-      socksPort: '8080'
+      socksHost: '188.213.168.123',
+      socksPort: '8975'
     },
     encoding: 'utf-8'
   };
@@ -218,72 +167,4 @@ var saveMovie = (data) => {
 
 };
 
-var parse = (ii) => {
-  console.log(ii);
-  if (!links[ii]) {
-    console.log('End '+ii);
-    return;
-  }
-  var options = {
-      url: 'http://127.0.0.1:8080/?url='+links[ii]
-  }
-  request.get(options, (err, res, body) => {
-      if (err) {
-        console.log(err);
-        if (err.code == 'ECONNRESET') {
-          return parse(ii);
-        }
-      }
-      else if (res.statusCode != 200) {
-        console.log('Error status '+res.statusCode);
-        return;
-      } else {
-        console.log(JSON.parse(body));
-        if (JSON.parse(body) == 'bad') {
-          console.log(chatId, 'Не в силах(');
-          return;
-        }
-
-        var movie = JSON.parse(body);
-
-        var text = '*' + movie.title + '* ' + movie.year + '\n'
-        + movie.alternativeTitle;
-
-        console.log(text);
-        return parse(ii+1);
-      }
-  });
-}
-
-var fromFile = (name) => {
-  fs.readFile(name, 'utf8', (err, contents) => {
-    var l = contents.split('\n');
-    for (var i = 0; i < l.length; i++) {
-      if (l[i] != '') links.push(l[i]);
-    }
-    parse(0);
-  });
-}
-
-fromFile('links');
-
-http.createServer((req, res) => {
-  logger(req, res, function (err) {
-    if (err) console.log(err);
-
-    var queryData = url.parse(req.url, true).query;
-    res.writeHead(200, {
-      'Content-Type': 'text/plain'
-    });
-
-    if (queryData.url) {
-      getMovieByUrl(queryData.url, (result) => {
-
-        res.end(JSON.stringify(result));
-      });
-    } else {
-      res.end('hello, world!')
-    }
-  })
-}).listen(config.port);
-console.log('Server listening at port %d', config.port);
+module.exports.getMovieByUrl = getMovieByUrl;

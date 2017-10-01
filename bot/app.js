@@ -38,6 +38,7 @@ const emoji = {
   'clapper': '\u{1F3AC}'
 };
 const replicas = {
+  'allWatchEmpty': emoji.ghost + ' Ваш список для просмотра пуст',
   'movieNotFound': emoji.ghost + ' Фильм не найден',
   'error': 'Не в силах('
 };
@@ -217,6 +218,28 @@ const userSave = (message) => {
   });
 };
 
+const getMovieByKinopoisk = (id, telegramId, callback) => {
+  var options = {
+    url: movieApi + '?search=' + encodeURI(id) + '&telegramId=' + telegramId
+  }
+  request.get(options, (err, res, body) => {
+    if (err) console.log(err);
+    else if (res.statusCode != 200) {
+      console.log('Error status ' + res.statusCode);
+      sendMessage(chatId, replicas.error);
+      return;
+    } else {
+      if (JSON.parse(body) == 'bad') {
+        return callback('bad');
+      }
+
+      var movie = JSON.parse(body);
+
+      return callback(movie);
+    }
+  });
+};
+
 const messageHandler = (message) => {
   lastmessage[message.chat.id] = message.text;
   userSave(message);
@@ -353,6 +376,7 @@ const init = () => {
           callback_watch(message);
 
         break;
+
       default:
 
     }
@@ -386,37 +410,34 @@ const init = () => {
 
     if (mes == emoji.clapper + ' буду смотреть') {
       bot.sendChatAction(chatId, 'typing');
-      return getAllWatch(fromId, (result) => {
-        console.log(result);
-        if (result.error) {
+      return getAllWatch(fromId, (movie) => {
+        console.log(movie);
+        if (movie.error) {
           bot.sendChatAction(chatId, 'typing');
-          return sendMessage(chatId, replicas.movieNotFound);
+          return sendMessage(chatId, replicas.allWatchEmpty);
         }
 
-        movie = result;
+        console.log(movie);
 
         if (movie.length > 1) {
           bot.sendChatAction(chatId, 'typing');
           return sendMessage(chatId, formatMovies(movie));
         } else if (movie.length == 1) {
-          var watch = false;
-          if (movie.watch) watch = true;
-
           bot.sendChatAction(chatId, 'typing');
-          return sendMessage(chatId, formatOneMovie(movie.movie[0]), {
+          return sendMessage(chatId, formatOneMovie(movie[0]), {
             inline_keyboard: [
               [{
                 text: 'Посмотрел',
-                callback_data: 'callback_add_view' + movie.movie[0].id
+                callback_data: 'callback_add_view' + movie[0].id
               }, {
-                text: (watch ? emoji.check : '') + 'Буду смотреть',
-                callback_data: 'callback_watch' + movie.movie[0].id
+                text: emoji.check + 'Буду смотреть',
+                callback_data: 'callback_watch' + movie[0].id
               }]
             ]
           });
         } else {
           bot.sendChatAction(chatId, 'typing');
-          return sendMessage(chatId, replicas.movieNotFound);
+          return sendMessage(chatId, replicas.allWatchEmpty);
         }
       });
     }
@@ -484,6 +505,20 @@ const init = () => {
               ]
             });
           });
+        break;
+
+      case /^https\:\/\/(plus)?(www)?\.kinopoisk\.ru\/film\/.*\d+\/$/.test(mes) ? mes:
+        null:
+          //getMovieByKinopoisk();
+          if (/^https\:\/\/(plus)/.test(mes)) { // https://plus.kinopoisk.ru/film/887535/
+
+          } else { // https://www.kinopoisk.ru/film/nesmotrya-ni-na-chto-2017-887535/
+            var mes = "https://www.kinopoisk.ru/film/nesmotrya-ni-na-chto-2017-887535/";
+            var last = mes.lastIndexOf('-');
+            console.log(mes.slice(last, -1));
+          }
+          console.log(mes);
+
         break;
       default:
         searchMovie(mes, fromId, (result) => {

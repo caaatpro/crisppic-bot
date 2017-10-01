@@ -4,7 +4,8 @@ const
   morgan = require('morgan'),
   Agent = require('socks5-https-client/lib/Agent'),
   database = require('./utils/db'),
-  textUtil = require('./utils/text');
+  textUtil = require('./utils/text'),
+  parserUtil = require('./utils/parser');
 
 const logger = morgan('combined');
 
@@ -17,6 +18,8 @@ var newCircuit = false;
 var GENRES = {},
   COUNTRIES = {};
 
+
+
 const db = database.init(() => {
   getGenres().then(() => {
     console.log('Genres ok');
@@ -24,7 +27,9 @@ const db = database.init(() => {
   getCountries().then(() => {
     console.log('Countries ok');
   });
-
+  parserUtil.getMovieByUrl('https://plus.kinopoisk.ru/film/887535/', function (movie) {
+    console.log(movie);
+  });
 });
 db.config.queryFormat = function(query, values) {
   return query.replace(/\{(\w+)\}/g, function(txt, key) {
@@ -49,7 +54,7 @@ http.createServer((req, res) => {
     }
 
     if (queryData.url) {
-      getMovieByUrl(decodeURI(queryData.url), (result) => {
+      parserUtil.getMovieByUrl(decodeURI(queryData.url), (result) => {
         res.end(JSON.stringify(result));
       });
     } else if (queryData.search) {
@@ -134,6 +139,37 @@ var movieHandler = (movie) => {
     movie.duration = Math.floor(movie.duration / 60) + ' час. ' + movie.duration % 60 + ' мин.';
   }
 
+  return movie;
+};
+
+var getMovieByKinopoisk = async(id, telegramId) => {
+  let movie = await db.queryAsync('SELECT * FROM `movies` WHERE kinopoisk_id = {id} LIMIT 1', {
+    id: id
+  });
+
+  if (movie.length == 0) {
+    getMovieByUrl('https://plus.kinopoisk.ru/film/887535/', function (movie) {
+      console.log(movie);
+    });
+    return {
+      'error': '404'
+    }
+  } else {
+    movie = movieHandler(movie[0]);
+
+    let user = await userInfo(telegramId);
+
+    let [views, watch] = await Promise.all([
+      userGetViews(movie.id, user[0].id),
+      userGetWatch(movie.id, user[0].id)
+    ]);
+
+    return {
+      movie,
+      watch,
+      views
+    };
+  }
   return movie;
 };
 
@@ -300,6 +336,10 @@ var userGetAllWatch = async(userID) => {
     type: 1,
     userID: userID
   });
+
+  if (userMoviesT.length == 0) {
+    return [];
+  }
 
   var ids = '';
   for (let i = 0; i < userMoviesT.length; i++) {
